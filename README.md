@@ -14,7 +14,7 @@ Only the Python standard library is needed (tkinter and sqlite3 ship with the Wi
 3. Pick a **Task type** and a **Target**, fill in the details, and check the **Agent team** and **Steps**.
 4. **Copy to clipboard** and paste into Claude Code. Copying also saves the request.
 
-## How it's organised
+## How it's organized
 
 | Piece | What it does |
 |---|---|
