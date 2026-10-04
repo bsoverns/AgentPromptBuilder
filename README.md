@@ -105,3 +105,7 @@ If you want branch protection to require a review, you need one of those two fir
 
 Setup, build, test and lint commands and the project conventions are in [AGENTS.md](AGENTS.md).
 In short: `pip install -r requirements-dev.txt`, then `python -m pytest` and `ruff check . && ruff format --check .`.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
