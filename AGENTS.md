@@ -25,6 +25,11 @@ pip install -r requirements-dev.txt
 
 All three must pass before a commit.
 
+## Branches
+
+- The base branch is `main`. Don't create a `master` branch; if a prompt or note says
+  `master`, read it as `main`. Work happens on feature branches merged into `main` by PR.
+
 ## Conventions
 
 - Type hints on public functions (the GUI file is exempt).
