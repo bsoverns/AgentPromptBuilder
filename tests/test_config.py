@@ -19,7 +19,7 @@ def test_save_json_failure_keeps_old_file(tmp_path):
     path = tmp_path / "config.json"
     app.save_json(path, {"a": 1})
     with pytest.raises(TypeError):
-        app.save_json(path, {"bad": object()})  # not JSON serialisable, fails mid-write
+        app.save_json(path, {"bad": object()})  # not JSON serializable, fails mid-write
     assert json.loads(path.read_text(encoding="utf-8")) == {"a": 1}
     assert [p.name for p in tmp_path.iterdir()] == ["config.json"]
 

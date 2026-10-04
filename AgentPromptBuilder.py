@@ -1197,7 +1197,7 @@ class App(tk.Tk):
         return self._dirty_key() != self._saved_key
 
     def confirm_leave(self):
-        """Ask to save unsaved changes. False means the user cancelled."""
+        """Ask to save unsaved changes. False means the user canceled."""
         if not self.is_dirty():
             return True
         label = f"#{self.request['id']} {self.request['title']}" if self.request else "this new request"

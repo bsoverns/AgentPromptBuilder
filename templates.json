@@ -452,7 +452,7 @@
       "steps": [
         "orient", "questions",
         { "id": "research", "title": "Research", "role": "lead",
-          "text": "Answer the question. Compare the options in a table (pros, cons, effort, risk, maintenance, licence) and say which you'd pick and why." },
+          "text": "Answer the question. Compare the options in a table (pros, cons, effort, risk, maintenance, license) and say which you'd pick and why." },
         { "id": "prototype", "title": "Prototype", "role": "coder", "default_mode": "Skip",
           "text": "Build a throwaway prototype on `{branch}` to prove the riskiest assumption. Don't merge it." },
         { "id": "writeup", "title": "Write-up", "role": "lead",
