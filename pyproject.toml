@@ -1,0 +1,22 @@
+[project]
+name = "agent-prompt-builder"
+version = "0.1.0"
+description = "Personal desktop tool that builds structured prompts for coding agents."
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = []
+
+[tool.ruff]
+line-length = 110
+target-version = "py313"
+extend-exclude = [".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]
+
+[tool.ruff.format]
+line-ending = "lf"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

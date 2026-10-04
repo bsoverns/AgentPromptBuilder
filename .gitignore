@@ -1,0 +1,35 @@
+# Personal data and local state (never commit)
+prompts.db
+*.db
+*.sqlite
+*.sqlite3
+config.json
+Prompts/
+
+# Secrets
+.env
+.env.*
+*.pem
+*.key
+*token*.txt
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# Editors and OS
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+.DS_Store
+*.log

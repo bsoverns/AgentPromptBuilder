@@ -1,0 +1,521 @@
+{
+  "settings": {
+    "author": "",
+    "github_user": "",
+    "github_reviewer": "",
+    "projects_root": "C:\\Sandbox"
+  },
+
+  "settings_fields": {
+    "author":        { "label": "Your name", "type": "entry" },
+    "projects_root": { "label": "Projects folder", "type": "dir", "hint": "Where new project folders usually go" }
+  },
+
+  "capabilities": {
+    "git_local":  { "label": "Git: branch + commit locally",                   "default": true },
+    "git_push":   { "label": "Git: push to GitHub",                            "default": true },
+    "gh_repo":    { "label": "gh: create GitHub repos",                        "default": true },
+    "gh_pr":      { "label": "gh: open / update PRs",                          "default": true },
+    "gh_review":  { "label": "gh: post PR review comments",                    "default": true },
+    "gh_approve": { "label": "gh: approve / request changes (2nd account)",    "default": false },
+    "gh_actions": { "label": "gh: GitHub Actions (CI)",                        "default": true },
+    "run_code":   { "label": "Run builds and tests locally",                   "default": true }
+  },
+
+  "targets": {
+    "claude_code": {
+      "label": "Claude Code (agentic, subagents)",
+      "agentic": true, "subagents": true
+    },
+    "agentic_cli": {
+      "label": "Codex / other agentic CLI (no subagents)",
+      "agentic": true, "subagents": false
+    },
+    "chat": {
+      "label": "Chat / API, no tools (Claude, ChatGPT)",
+      "agentic": false, "subagents": false,
+      "preamble": "You can't run commands or edit files here. For any step that needs a command, give me the exact command and wait for me to paste the output. When you change a file, give the whole file (or a unified diff for a large file) in a fenced block headed with its path."
+    },
+    "local": {
+      "label": "Local model (Ollama / LM Studio)",
+      "agentic": false, "subagents": false, "terse": true,
+      "preamble": "You can't run commands or edit files. Give me exact commands and wait for the output. Give changed files in full, in fenced blocks headed with their path. Keep explanations short."
+    }
+  },
+
+  "roles": {
+    "lead":     "Owns the plan, the questions to me, the hand-offs and the final report. Doesn't write the main code when the team has a coder.",
+    "coder":    "Writes the change and its tests, following the project's existing patterns. Keeps the diff focused on this request.",
+    "reviewer": "Reviews the diff cold: correctness, edge cases, error handling, security, readability, and the acceptance criteria. Reports findings as blocker / should fix / nit with file:line. Doesn't rewrite the code.",
+    "qa":       "Owns the test plan and acceptance criteria. Runs the checks and reports pass / fail per criterion with evidence. Doesn't fix code; sends failures back to the coder.",
+    "security": "Looks for injection, secrets in code or logs, unsafe deserialization, path traversal, missing auth checks and vulnerable dependencies.",
+    "docs":     "Keeps README, CHANGELOG and comments in step with the change."
+  },
+
+  "team_presets": {
+    "Solo":             [ { "name": "Claude", "role": "lead" } ],
+    "Coder + Reviewer": [ { "name": "Atlas", "role": "lead" }, { "name": "Forge", "role": "coder" }, { "name": "Hawk", "role": "reviewer" } ],
+    "Full team":        [ { "name": "Atlas", "role": "lead" }, { "name": "Forge", "role": "coder" }, { "name": "Hawk", "role": "reviewer" }, { "name": "Probe", "role": "qa" } ],
+    "Bug hunt":         [ { "name": "Atlas", "role": "lead" }, { "name": "Hawk", "role": "reviewer" }, { "name": "Owl", "role": "reviewer" }, { "name": "Probe", "role": "qa" }, { "name": "Forge", "role": "coder" } ],
+    "Review pair":      [ { "name": "Atlas", "role": "lead" }, { "name": "Hawk", "role": "reviewer" }, { "name": "Owl", "role": "reviewer" } ]
+  },
+
+  "languages": {
+    "C#":         { "build": "dotnet build", "test": "dotnet test", "lint": "dotnet format --verify-no-changes",
+                    "outdated": "dotnet list package --outdated --include-transitive; dotnet list package --deprecated; dotnet list package --vulnerable",
+                    "notes": "Nullable reference types on; follow .editorconfig; async all the way down for I/O." },
+    "C++":        { "build": "cmake --build build", "test": "ctest --test-dir build --output-on-failure", "lint": "clang-tidy (per the repo's .clang-tidy)",
+                    "outdated": "check the vcpkg.json / conanfile baseline against the latest registry versions",
+                    "notes": "Modern C++ (RAII, smart pointers, no raw new/delete); match the repo's C++ standard and .clang-format." },
+    "Rust":       { "build": "cargo build", "test": "cargo test", "lint": "cargo clippy --all-targets -- -D warnings && cargo fmt --check",
+                    "outdated": "cargo outdated (cargo install cargo-outdated) and cargo audit (cargo install cargo-audit)",
+                    "notes": "No unwrap()/expect() in library code paths without a reason; keep unsafe to a minimum and document it." },
+    "Python":     { "build": "python -m compileall -q .", "test": "python -m pytest", "lint": "ruff check . && ruff format --check .",
+                    "outdated": "pip list --outdated and pip-audit",
+                    "notes": "Type hints on public functions; use a virtual environment; pin versions in requirements / pyproject." },
+    "Java":       { "build": "gradlew build (or mvn -q package)", "test": "gradlew test (or mvn test)", "lint": "gradlew check",
+                    "outdated": "gradlew dependencyUpdates (ben-manes plugin) or mvn versions:display-dependency-updates",
+                    "notes": "Match the repo's Java version; prefer records and Optional over nulls in new code." },
+    "TypeScript": { "build": "npm run build", "test": "npm test", "lint": "npm run lint",
+                    "outdated": "npm outdated and npm audit",
+                    "notes": "strict mode; no any without a reason; keep the lockfile in sync via npm, not by hand." },
+    "JavaScript": { "build": "npm run build", "test": "npm test", "lint": "npm run lint",
+                    "outdated": "npm outdated and npm audit",
+                    "notes": "Keep the lockfile in sync via npm, not by hand." },
+    "Go":         { "build": "go build ./...", "test": "go test ./...", "lint": "go vet ./... && gofmt -l .",
+                    "outdated": "go list -u -m all and govulncheck ./...",
+                    "notes": "Handle every error; wrap with %w; keep packages small." },
+    "Other / mixed": { "build": "", "test": "", "lint": "", "outdated": "", "notes": "" }
+  },
+
+  "project_fields": {
+    "name":            { "label": "Project name", "type": "entry" },
+    "repo_path":       { "label": "Repo folder", "type": "dir", "hint": "For a new project, the folder to create" },
+    "github_repo":     { "label": "GitHub repo (owner/name)", "type": "entry", "hint": "Blank if it's local only" },
+    "base_branch":     { "label": "Base branch", "type": "entry", "default": "main" },
+    "language":        { "label": "Main language", "type": "choice", "options_from": "languages" },
+    "other_languages": { "label": "Other languages", "type": "entry", "hint": "e.g. SQL, Lua, HLSL, PowerShell" },
+    "framework":       { "label": "Framework / engine", "type": "entry", "hint": "e.g. .NET 9 WPF, Bevy, Qt 6, FastAPI" },
+    "build_cmd":       { "label": "Build command", "type": "entry", "hint": "Blank = language default" },
+    "test_cmd":        { "label": "Test command", "type": "entry", "hint": "Blank = language default" },
+    "lint_cmd":        { "label": "Lint / format command", "type": "entry", "hint": "Blank = language default" },
+    "run_cmd":         { "label": "Run command", "type": "entry", "hint": "How to start the app" },
+    "rules_file":      { "label": "Agent rules file", "type": "entry", "default": "CLAUDE.md", "hint": "CLAUDE.md or AGENTS.md in the repo" },
+    "project_rules":   { "label": "Project rules (one per line)", "type": "text", "hint": "Added to the Rules of every prompt for this project" }
+  },
+
+  "fields": {
+    "title":            { "label": "Title", "type": "entry", "hint": "Short name; also used for the branch" },
+    "issue":            { "label": "GitHub issue # (optional)", "type": "entry", "clear_on_copy": true },
+    "branch":           { "label": "Branch", "type": "entry", "clear_on_copy": true, "hint": "Blank = <prefix>/<request id>-<title>" },
+    "change_size":      { "label": "Change size", "type": "choice", "options": ["Small", "Normal", "Large"],
+                          "rules": {
+                            "Small": "Small change: keep the process in proportion. At most one round of questions, a short plan, tests for what changed, docs only where touched, short updates.",
+                            "Large": "Large change: write the plan first and wait for my OK before writing code. Commit in reviewable steps."
+                          } },
+    "guidance":         { "label": "What needs to happen", "type": "text", "section": "What needs to happen" },
+    "requirements":     { "label": "Requirements (one per line)", "type": "text", "section": "Requirements" },
+    "acceptance":       { "label": "Acceptance criteria", "type": "text", "section": "Acceptance criteria", "hint": "Given / When / Then, one per line. QA tests against these." },
+    "test_plan":        { "label": "Test scenarios (from me)", "type": "text", "section": "Test scenarios (from me)", "clear_on_copy": true },
+    "files":            { "label": "Files / folders in scope", "type": "text", "hint": "One per line. Blank = the agent finds them" },
+    "reference":        { "label": "Reference / example code", "type": "text", "hint": "One per line: code to copy patterns from" },
+    "out_of_scope":     { "label": "Out of scope (don't touch)", "type": "text", "section": "Out of scope (don't touch)" },
+
+    "app_type":         { "label": "Kind of software", "type": "choice", "options": ["CLI tool", "Desktop GUI app", "Web API", "Web app", "Library / package", "Game", "Service / daemon", "Script / utility"] },
+    "platforms":        { "label": "Target platforms", "type": "entry", "default": "Windows" },
+    "license":          { "label": "License", "type": "choice", "options": ["MIT", "Apache-2.0", "GPL-3.0", "None (all rights reserved)"] },
+    "visibility":       { "label": "GitHub visibility", "type": "choice", "options": ["private", "public"] },
+    "ci_os":            { "label": "CI operating systems", "type": "entry", "default": "windows-latest, ubuntu-latest" },
+
+    "current_behavior": { "label": "Current behavior", "type": "text", "section": "Current behavior" },
+    "new_behavior":     { "label": "New behavior", "type": "text", "section": "New behavior" },
+    "old_feature":      { "label": "Old feature (keep it working)", "type": "text", "section": "Old feature (keep it working)" },
+    "new_feature":      { "label": "New feature", "type": "text", "section": "New feature" },
+    "switch_mechanism": { "label": "How to switch old/new", "type": "choice", "options": ["Config setting", "Runtime feature flag", "Versioned API / endpoint", "Side-by-side module / class", "Command-line switch"] },
+    "removal_plan":     { "label": "Removal plan for the old feature", "type": "text", "section": "Removal plan for the old feature", "hint": "Blank = the agent proposes one" },
+
+    "severity":         { "label": "Severity", "type": "choice", "options": ["High", "Medium", "Low"] },
+    "symptoms":         { "label": "Symptoms", "type": "text", "section": "Symptoms" },
+    "repro":            { "label": "Steps to reproduce", "type": "text", "section": "Steps to reproduce" },
+    "expected_actual":  { "label": "Expected vs actual", "type": "text", "section": "Expected vs actual" },
+    "logs":             { "label": "Logs / errors / environment", "type": "text", "section": "Logs / errors / environment" },
+    "focus":            { "label": "Focus areas", "type": "text", "section": "Focus areas", "hint": "e.g. save/load, threading, input parsing" },
+
+    "pr":               { "label": "PR number or URL", "type": "entry", "clear_on_copy": true },
+    "review_depth":     { "label": "Review depth", "type": "choice", "options": ["Normal", "Quick (blockers only)", "Deep (line by line, incl. tests)"],
+                          "rules": {
+                            "Quick (blockers only)": "Quick review: report blockers only.",
+                            "Deep (line by line, incl. tests)": "Deep review: go line by line, including the tests, and check each test really asserts the behavior it claims to."
+                          } },
+    "under_test":       { "label": "Branch / PR / build under test", "type": "entry", "clear_on_copy": true },
+
+    "packages":         { "label": "Packages (blank = all)", "type": "text" },
+    "allow_major":      { "label": "Allow major upgrades", "type": "choice", "options": ["Yes, with code migration", "No, minor and patch only"],
+                          "rules": { "No, minor and patch only": "Stay within the current major versions. List the major upgrades you skipped." } },
+
+    "question":         { "label": "Question to answer", "type": "text", "section": "Question to answer" },
+    "options":          { "label": "Options to compare", "type": "text", "section": "Options to compare", "hint": "Blank = the agent finds them" },
+    "version":          { "label": "Version (blank = work it out)", "type": "entry", "clear_on_copy": true },
+
+    "handoff_notes":    { "label": "What's already done / current state", "type": "text", "clear_on_copy": true, "hint": "Shown to the agent as hand-off context" },
+    "next_request":     { "label": "What to do next", "type": "text", "section": "What to do next", "clear_on_copy": true }
+  },
+
+  "global_rules": [
+    "Work only inside {repo_path} and the paths named in this prompt.",
+    "If something you need is missing, ask me everything in ONE message before writing code, each question with your recommended answer.",
+    "Follow {rules_file} and the project's existing patterns. Don't over-engineer and don't refactor code this request doesn't need.",
+    "Don't say something works until you've tested it. Only report facts you've verified (test results, counts, links).",
+    "If a step fails, stop and tell me which step and the exact error.",
+    "Never print, hardcode or commit secrets; read them from environment variables and keep them out of git.",
+    "Never force-push, rewrite history on {base_branch}, or merge a PR unless I say so.",
+    "Preserve existing line endings and file encoding."
+  ],
+
+  "step_library": {
+    "orient":        { "title": "Get oriented", "role": "lead",
+                       "text": "In {repo_path}, read {rules_file} and README.md if they exist, then the code this request touches. Summarize the current state in 3-5 lines." },
+    "questions":     { "title": "Ask questions", "role": "lead",
+                       "text": "If anything you need is missing or unclear, ask me everything in ONE message, each question with your recommended answer so I can just reply 'yes'. Wait for my answers before writing code." },
+    "sync_base":     { "title": "Update base branch", "role": "lead", "cap": "git_local",
+                       "text": "Make sure the working tree is clean (if it isn't, stop and tell me). Then `git checkout {base_branch}` and `git pull` (skip the pull if there's no remote yet).",
+                       "manual": "I'll bring {base_branch} up to date myself. Don't pull or switch branches." },
+    "create_branch": { "title": "Create branch", "role": "lead", "cap": "git_local",
+                       "text": "Create and switch to `{branch}` from {base_branch}.",
+                       "manual": "I'll create `{branch}` myself and switch to it. Don't create or switch branches." },
+    "plan":          { "title": "Plan", "role": "lead",
+                       "text": "Write a short plan: files to change, approach, risks, and how each acceptance criterion will be checked. Assign the work to the team." },
+    "implement":     { "title": "Implement", "role": "coder",
+                       "text": "Make the change. Follow the project's existing patterns and {language} conventions, and keep the diff focused on this request." },
+    "tests":         { "title": "Tests", "role": "coder", "cap": "run_code",
+                       "text": "Add or update automated tests for each acceptance criterion and the edge cases you can think of.{test_plan_note} Run `{test_cmd}` and report pass / fail counts.",
+                       "manual": "I'll run the tests. Write them, then give me the command and what to look for." },
+    "build":         { "title": "Build + lint", "role": "coder", "cap": "run_code",
+                       "text": "Run `{build_cmd}` and `{lint_cmd}`. Fix errors and warnings your change introduced; list pre-existing ones without fixing them.",
+                       "manual": "I'll build. Give me the commands and wait for my results." },
+    "review":        { "title": "Code review", "role": "reviewer",
+                       "text": "Review the full diff against {base_branch} as if seeing it for the first time: correctness, edge cases, error handling, security, naming, tests, and whether each acceptance criterion is met. List findings as blocker / should fix / nit with file:line. The coder fixes blockers and should-fixes, then review once more. After two rounds, stop and list what's left." },
+    "qa":            { "title": "QA", "role": "qa",
+                       "text": "Check every acceptance criterion and test scenario: pass / fail with evidence (test name, command output, or the steps you ran). Send failures back to the coder and re-test after the fix." },
+    "docs":          { "title": "Docs", "role": "coder",
+                       "text": "Update README, CHANGELOG and comments only where behavior or usage changed." },
+    "commit":        { "title": "Commit", "role": "coder", "cap": "git_local",
+                       "text": "Commit in small, logical commits with Conventional Commit messages (`{commit_type}: <summary>`).{issue_note}",
+                       "manual": "I'll commit. Give me the list of changed files and a commit message (`{commit_type}: <summary>`)." },
+    "push":          { "title": "Push", "role": "lead", "cap": "git_push",
+                       "text": "`git push -u origin {branch}`.",
+                       "manual": "I'll push `{branch}` myself. Tell me when it's ready." },
+    "create_pr":     { "title": "Open PR", "role": "lead", "cap": "gh_pr",
+                       "text": "Open a PR with `gh pr create --base {base_branch} --head {branch}`. Title: `{commit_type}: <summary>`. Body: ## Summary, ## Changes, ## Testing (commands and results), ## Acceptance criteria (a checklist, ticked only when verified).{closes_note} Give me the link.",
+                       "manual": "Give me the compare link ({compare_link}), a PR title and a markdown body (## Summary, ## Changes, ## Testing, ## Acceptance criteria).{closes_note} I'll open it and send you the link. Wait for it." },
+    "ci_check":      { "title": "Check CI", "role": "lead", "cap": "gh_actions",
+                       "text": "If the repo has GitHub Actions, wait for the PR checks (`gh pr checks --watch`). If one fails, read the log (`gh run view --log-failed`), fix it, push and check again." },
+    "post_review":   { "title": "Post review on GitHub", "role": "reviewer", "cap": "gh_review",
+                       "text": "Post the review on PR {pr} as ONE review with event COMMENT (not APPROVE or REQUEST_CHANGES): inline comments for line-specific findings and a summary body with the verdict. Use `gh api repos/{github_repo}/pulls/<number>/reviews` with a JSON body of event, body and comments (path, line, side, body).{reviewer_note}",
+                       "manual": "Don't post anything. Give me the review as markdown (verdict first, then findings with file:line) for me to paste." },
+    "verdict":       { "title": "Approve / request changes", "role": "reviewer", "cap": "gh_approve",
+                       "text": "Submit the verdict as the reviewer account {github_reviewer}: `GH_TOKEN=\"$(gh auth token --user {github_reviewer})\" gh pr review {pr} --approve`, or the same with `--request-changes --body \"<summary>\"`. Never print the token or run `gh auth token` on its own. If {github_reviewer} wrote the PR, GitHub won't allow this; just tell me the verdict.",
+                       "manual": "Give me your verdict (approve / request changes) in one line with the reason. I'll submit it." },
+    "write_agents":  { "title": "Save team as agent files", "role": "lead", "default_mode": "Skip",
+                       "text": "Create `.claude/agents/<name>.md` in {repo_path} for each teammate ({team_names}): YAML front matter with name, description (the role and when to use it) and model if one is listed, then the role brief as the body. Commit them so the team can be reused in this repo." }
+  },
+
+  "templates": [
+    {
+      "id": "new_project",
+      "name": "New software - create a project",
+      "description": "Requirements -> scaffold the folder and repo -> build it as a team -> tests, review, QA -> GitHub repo -> optional CI.",
+      "branch_prefix": "feature", "commit_type": "feat", "team": "Full team",
+      "fields": ["title", "app_type", "platforms", "guidance", "requirements", "acceptance", "out_of_scope", "license", "visibility", "ci_os", "handoff_notes"],
+      "rules": [
+        "Pick current, well-maintained dependencies, and only as many as the requirements need.",
+        "Work on {base_branch} until the GitHub repo exists; use branches after that."
+      ],
+      "steps": [
+        { "use": "questions", "text": "Before scaffolding, check the requirements and acceptance criteria are complete and testable. Ask me everything that's missing in ONE message, each with your recommended answer, and wait." },
+        { "id": "scaffold", "title": "Scaffold project", "role": "lead",
+          "text": "Create {repo_path} (stop if it exists and isn't empty). Set up a {language} {app_type}{framework_note} with the standard layout for that toolchain, a .gitignore for {language}, README.md (what it is, how to build, run and test), LICENSE ({license}) and {rules_file} listing the build / test / lint commands and conventions. Run `git init -b {base_branch}` and make the first commit." },
+        { "use": "plan", "title": "Architecture",
+          "text": "Propose the structure: modules, key types, data flow, and dependencies with versions. Keep it as simple as the requirements allow. Map each acceptance criterion to where it's implemented and how it's tested." },
+        "implement", "tests", "build", "review", "qa", "docs", "commit",
+        { "id": "create_repo", "title": "Create GitHub repo", "role": "lead", "cap": "gh_repo",
+          "text": "Create the GitHub repo and push: `gh repo create {github_repo} --{visibility} --source \"{repo_path}\" --push`.",
+          "manual": "I'll create the GitHub repo myself. Give me the settings to use, then wait." },
+        { "id": "ci_setup", "title": "Set up CI", "role": "coder", "cap": "gh_actions", "default_mode": "Skip",
+          "text": "Add `.github/workflows/ci.yml` that runs `{build_cmd}`, `{lint_cmd}` and `{test_cmd}` on pushes to {base_branch} and on PRs, on {ci_os}, with dependency caching and the current major versions of the official actions. Push it and confirm the first run passes (`gh run watch`)." },
+        "write_agents"
+      ]
+    },
+
+    {
+      "id": "feature_add",
+      "name": "Feature - add new",
+      "description": "Branch -> plan -> implement + tests -> review -> QA against acceptance criteria -> PR.",
+      "branch_prefix": "feature", "commit_type": "feat", "team": "Full team",
+      "fields": ["title", "issue", "branch", "change_size", "guidance", "requirements", "acceptance", "test_plan", "files", "reference", "out_of_scope", "handoff_notes"],
+      "rules": [],
+      "steps": ["orient", "questions", "sync_base", "create_branch", "plan", "implement", "tests", "build", "review", "qa", "docs", "commit", "push", "create_pr", "ci_check"]
+    },
+
+    {
+      "id": "feature_update",
+      "name": "Feature - change existing",
+      "description": "Change how an existing feature behaves: find every usage first, then change, test, review, QA, PR.",
+      "branch_prefix": "feature", "commit_type": "feat", "team": "Full team",
+      "fields": ["title", "issue", "branch", "change_size", "current_behavior", "new_behavior", "acceptance", "test_plan", "files", "out_of_scope", "handoff_notes"],
+      "rules": ["If a change would break saved data, settings or a public API, stop and tell me before making it."],
+      "steps": [
+        "orient",
+        { "id": "usages", "title": "Find usages", "role": "lead",
+          "text": "List every caller, setting, saved-data format and doc that depends on the current behavior. This is what the change can break." },
+        "questions", "sync_base", "create_branch", "plan",
+        { "use": "implement", "text": "Change the behavior from current to new. Update tests that encoded the old behavior and say which ones changed and why." },
+        "tests", "build", "review", "qa", "docs", "commit", "push", "create_pr", "ci_check"
+      ]
+    },
+
+    {
+      "id": "feature_replace",
+      "name": "Feature - replace old with new (keep old alive)",
+      "description": "Build the new feature next to the old one behind a switch, prove parity, deprecate the old one without removing it.",
+      "branch_prefix": "feature", "commit_type": "feat", "team": "Full team",
+      "fields": ["title", "issue", "branch", "change_size", "old_feature", "new_feature", "switch_mechanism", "removal_plan", "acceptance", "test_plan", "files", "handoff_notes"],
+      "rules": [
+        "The old feature must keep working exactly as before while the switch is on 'old'.",
+        "Don't delete the old code in this request."
+      ],
+      "steps": [
+        "orient",
+        { "id": "map_old", "title": "Map the old feature", "role": "lead",
+          "text": "List everything that uses the old feature (callers, config, saved data, docs). That's the compatibility surface the new feature has to respect." },
+        "questions", "sync_base", "create_branch", "plan",
+        { "use": "implement", "title": "Build new behind a switch",
+          "text": "Build the new feature alongside the old one, selected by the switch described in Context. The default stays on the OLD path unless I say otherwise. Only touch the old code to route it through the switch." },
+        { "id": "parity", "title": "Parity tests", "role": "qa", "cap": "run_code",
+          "text": "Write tests that run both paths with the same inputs and compare the results. List every intentional difference.",
+          "manual": "I'll run the parity tests. Write them and tell me how to run both paths." },
+        { "id": "deprecate", "title": "Deprecate old", "role": "coder",
+          "text": "Mark the old feature deprecated the way {language} allows (attribute, annotation, doc comment or a one-time log warning) with a pointer to the new one. Don't remove it." },
+        { "use": "docs", "text": "Document how to switch, how to roll back, and the removal plan (mine if it's given above, otherwise propose one)." },
+        "tests", "build", "review", "qa", "commit", "push", "create_pr", "ci_check"
+      ]
+    },
+
+    {
+      "id": "bug_fix",
+      "name": "Bug - fix a known bug",
+      "description": "Reproduce with a failing test -> root cause -> smallest fix -> regression test -> review -> QA -> PR.",
+      "branch_prefix": "fix", "commit_type": "fix", "team": "Coder + Reviewer",
+      "fields": ["title", "issue", "branch", "severity", "symptoms", "repro", "expected_actual", "logs", "files", "handoff_notes"],
+      "rules": ["Fix the root cause, not the symptom. Don't change unrelated behavior."],
+      "steps": [
+        "orient", "questions", "sync_base", "create_branch",
+        { "id": "reproduce", "title": "Reproduce", "role": "coder",
+          "text": "Reproduce the bug from the details above. Write a failing test that shows it BEFORE changing any code. If you can't reproduce it, stop and tell me what you tried." },
+        { "id": "root_cause", "title": "Root cause", "role": "coder",
+          "text": "Find the root cause and explain it in 2-3 lines. Check whether the same mistake appears anywhere else and list those places." },
+        { "use": "implement", "title": "Fix", "text": "Make the smallest fix for the root cause." },
+        { "use": "tests", "text": "Confirm the failing test now passes, add tests for any other places with the same mistake, then run `{test_cmd}` and report pass / fail counts." },
+        "build", "review", "qa", "commit", "push", "create_pr", "ci_check"
+      ]
+    },
+
+    {
+      "id": "bug_hunt",
+      "name": "Bug hunt - review code for bugs (multiple reviewers)",
+      "description": "Independent reviewers -> consolidate -> verify with repros -> ranked report. Fixing waits for your go.",
+      "branch_prefix": "fix", "commit_type": "fix", "team": "Bug hunt",
+      "fields": ["title", "files", "focus", "guidance", "out_of_scope", "branch", "handoff_notes"],
+      "rules": ["Don't change any code until I pick which findings to fix."],
+      "steps": [
+        { "use": "orient", "text": "In {repo_path}, read {rules_file} and README.md if they exist, then map the code in scope (files listed in Context, or the whole repo if none). Summarize what it does in 3-5 lines." },
+        { "id": "independent_review", "title": "Independent reviews", "role": "reviewer",
+          "text": "Every reviewer reviews the scope on their own, without seeing the others' findings. Look for logic errors, off-by-one, null / None handling, error handling and resource leaks, concurrency, input validation, security, and the focus areas. For each finding: file:line, what's wrong, a concrete input that triggers it, severity and confidence." },
+        { "id": "consolidate", "title": "Consolidate", "role": "lead",
+          "text": "Merge the findings, remove duplicates and rank by severity. A finding is 'confirmed' only if two reviewers found it or it's been reproduced; everything else is 'suspected'." },
+        { "id": "verify", "title": "Verify", "role": "qa", "cap": "run_code",
+          "text": "For every high or medium finding, write a failing test or exact repro steps. Downgrade anything you can't reproduce.",
+          "manual": "I'll verify. Give me the repro steps for each high / medium finding." },
+        { "id": "report", "title": "Report", "role": "lead",
+          "text": "Give me the ranked list (confirmed, then suspected) with a proposed fix and effort for each. Then stop and wait for me to pick which ones to fix." },
+        { "id": "fix", "title": "Fix the ones I pick", "role": "coder", "default_mode": "Skip",
+          "text": "After I choose: create `{branch}` from {base_branch}, fix the chosen findings with a regression test for each, run `{test_cmd}`, commit (`fix: <summary>`), push and open a PR listing each finding fixed." }
+      ]
+    },
+
+    {
+      "id": "qa_plan",
+      "name": "QA - test plan and acceptance",
+      "description": "Turn the acceptance criteria into a test plan, automate what can be automated, run it, and give a verdict. QA doesn't fix code.",
+      "branch_prefix": "qa", "commit_type": "test", "team": "Full team",
+      "fields": ["title", "under_test", "pr", "acceptance", "test_plan", "focus", "files", "handoff_notes"],
+      "rules": ["QA reports bugs; it doesn't fix product code. Test code is fine."],
+      "steps": [
+        { "use": "orient", "text": "In {repo_path}, read {rules_file} and README.md if they exist, check out what's under test (see Context) and read the change. Summarize what changed in 3-5 lines." },
+        { "id": "criteria", "title": "Check the criteria", "role": "qa",
+          "text": "Check every acceptance criterion is testable (Given / When / Then). Rewrite vague ones and show me the rewrites before testing." },
+        { "id": "derive_plan", "title": "Write the test plan", "role": "qa",
+          "text": "Write the test plan as a table: id | scenario | steps | expected | type (unit / integration / manual) | criterion covered. Cover the happy path, edge cases, error paths, and regressions in nearby features." },
+        { "id": "automate", "title": "Automate", "role": "coder", "cap": "run_code",
+          "text": "Automate every scenario that can be automated, then run `{test_cmd}`.",
+          "manual": "I'll run the automated tests. Write them and give me the command." },
+        { "id": "execute", "title": "Run the plan", "role": "qa",
+          "text": "Run every scenario and record pass / fail with evidence." },
+        { "id": "signoff", "title": "QA verdict", "role": "qa",
+          "text": "Give the verdict: pass / pass with issues / fail. List failing criteria and every bug found (title, repro steps, severity)." },
+        { "id": "save_plan", "title": "Save the plan in the repo", "role": "qa", "default_mode": "Skip",
+          "text": "Save the test plan and results as docs/test-plans/<date>-<title>.md and commit it." },
+        { "use": "post_review", "title": "Post verdict on the PR", "default_mode": "Skip",
+          "text": "Post the QA verdict and the test-plan table as a comment on PR {pr} (`gh pr comment {pr} --body-file <file>`)." }
+      ]
+    },
+
+    {
+      "id": "deps_update",
+      "name": "Dependencies - update / replace obsolete packages",
+      "description": "Baseline -> inventory outdated, deprecated and vulnerable packages -> update in groups -> migrate code -> regression test -> PR.",
+      "branch_prefix": "chore", "commit_type": "chore(deps)", "team": "Full team",
+      "fields": ["title", "issue", "branch", "packages", "allow_major", "guidance", "handoff_notes"],
+      "rules": [
+        "Prefer actively maintained packages; don't add a dependency where the standard library does the job.",
+        "Update lockfiles with the package manager, never by hand."
+      ],
+      "steps": [
+        "orient", "sync_base", "create_branch",
+        { "id": "baseline", "title": "Baseline", "role": "qa", "cap": "run_code",
+          "text": "Before changing anything, run `{build_cmd}` and `{test_cmd}` and record the results as the baseline.",
+          "manual": "I'll run the baseline build and tests. Give me the commands." },
+        { "id": "inventory", "title": "Inventory", "role": "lead",
+          "text": "List outdated, deprecated and vulnerable packages ({outdated_cmd}) as a table: package | current | latest | reason (outdated / deprecated / CVE) | breaking?. For deprecated or abandoned packages, propose a maintained replacement with one line of reasoning." },
+        { "use": "questions", "text": "Show me the inventory and the replacements you propose, and wait for my OK before updating." },
+        { "id": "update", "title": "Update in groups", "role": "coder",
+          "text": "Update one package (or one related group) at a time. For major versions, read the changelog / migration guide first and list the breaking changes that affect this code." },
+        { "id": "migrate", "title": "Migrate code", "role": "coder",
+          "text": "Update the code to the new APIs. Don't leave deprecated calls behind; list any you couldn't replace and why." },
+        "build",
+        { "use": "tests", "text": "Run `{test_cmd}` and compare with the baseline: no new failures. Add tests where a migration changed behavior." },
+        { "use": "qa", "title": "Regression check", "text": "Run the app's main flows (or the test plan) and compare with the baseline. Report anything that behaves differently." },
+        { "use": "commit", "text": "Commit one package or group per commit (`chore(deps): bump <package> <old> -> <new>`).{issue_note}" },
+        "push",
+        { "use": "create_pr", "text": "Open a PR with `gh pr create --base {base_branch} --head {branch}`. Title: `chore(deps): <summary>`. Body: the package table, breaking changes handled, code changes, and test results against the baseline.{closes_note} Give me the link." },
+        "ci_check"
+      ]
+    },
+
+    {
+      "id": "pr_review",
+      "name": "PR review - my code or another agent's",
+      "description": "Read the PR, build and test it, review it (one or more reviewers), post comments; approving needs a second GitHub account.",
+      "branch_prefix": "review", "commit_type": "fix", "team": "Review pair",
+      "fields": ["title", "pr", "review_depth", "acceptance", "focus", "handoff_notes"],
+      "rules": ["Don't push commits to the PR branch unless I ask; review only."],
+      "steps": [
+        { "id": "fetch", "title": "Read the PR", "role": "lead", "cap": "gh_review",
+          "text": "Run `gh pr view {pr}` and `gh pr diff {pr}`, and read the description and any linked issue. If you need to run it, `gh pr checkout {pr}` (note the branch you were on first).",
+          "manual": "I'll give you the diff. Wait for me to paste it." },
+        { "use": "build", "title": "Build + test the PR", "text": "On the PR branch, run `{build_cmd}`, `{lint_cmd}` and `{test_cmd}`. Report failures; don't fix them." },
+        { "use": "review", "text": "Each reviewer reviews the PR on their own: correctness, edge cases, error handling, security, tests, and the acceptance criteria / focus areas if given. Then the lead merges the findings into one list (blocker / should fix / nit, file:line, suggested fix) and drops duplicates." },
+        { "use": "post_review", "text": "Post the merged review on PR {pr} as ONE review with event COMMENT: inline comments for line-specific findings and a summary body with the verdict. Use `gh api repos/{github_repo}/pulls/<number>/reviews` with a JSON body of event, body and comments (path, line, side, body).{reviewer_note}" },
+        "verdict",
+        { "id": "restore", "title": "Put things back", "role": "lead", "cap": "git_local",
+          "text": "Switch back to the branch you started on." }
+      ]
+    },
+
+    {
+      "id": "refactor",
+      "name": "Refactor / cleanup (no behavior change)",
+      "description": "Baseline tests -> small refactor steps with tests green after each -> review confirms no behavior change -> PR.",
+      "branch_prefix": "refactor", "commit_type": "refactor", "team": "Coder + Reviewer",
+      "fields": ["title", "issue", "branch", "change_size", "guidance", "files", "out_of_scope", "handoff_notes"],
+      "rules": ["Behavior must not change. If a test has to change, stop and tell me why."],
+      "steps": [
+        "orient", "questions", "sync_base", "create_branch",
+        { "id": "baseline", "title": "Baseline tests", "role": "coder", "cap": "run_code",
+          "text": "Run `{test_cmd}` and record the result. If the code in scope has no tests, add characterization tests first.",
+          "manual": "I'll run the baseline tests. Give me the command." },
+        "plan",
+        { "use": "implement", "title": "Refactor", "text": "Refactor in small steps, running the tests after each one. Keep public APIs unchanged unless the plan says otherwise." },
+        "tests", "build",
+        { "use": "review", "text": "Review the diff against {base_branch} and confirm behavior hasn't changed: same inputs give the same outputs, errors and side effects. List findings as blocker / should fix / nit with file:line." },
+        "commit", "push", "create_pr", "ci_check"
+      ]
+    },
+
+    {
+      "id": "spike",
+      "name": "Spike / research (no product code)",
+      "description": "Answer a question: compare options, optionally prototype on a throwaway branch, recommend.",
+      "branch_prefix": "spike", "commit_type": "chore", "team": "Solo",
+      "fields": ["title", "question", "options", "guidance", "files", "handoff_notes"],
+      "rules": ["Don't change product code on {base_branch}."],
+      "steps": [
+        "orient", "questions",
+        { "id": "research", "title": "Research", "role": "lead",
+          "text": "Answer the question. Compare the options in a table (pros, cons, effort, risk, maintenance, licence) and say which you'd pick and why." },
+        { "id": "prototype", "title": "Prototype", "role": "coder", "default_mode": "Skip",
+          "text": "Build a throwaway prototype on `{branch}` to prove the riskiest assumption. Don't merge it." },
+        { "id": "writeup", "title": "Write-up", "role": "lead",
+          "text": "Give me: the recommendation, the evidence, open questions, and the next request I should create (title + acceptance criteria)." }
+      ]
+    },
+
+    {
+      "id": "release",
+      "name": "Release - version, changelog, tag",
+      "description": "Work out the version -> changelog -> bump -> build + test -> PR -> after merge: tag and GitHub release.",
+      "branch_prefix": "release", "commit_type": "chore(release)", "team": "Solo",
+      "fields": ["title", "version", "guidance", "handoff_notes"],
+      "rules": ["Use Semantic Versioning."],
+      "steps": [
+        "orient", "sync_base", "create_branch",
+        { "id": "version", "title": "Work out the version", "role": "lead",
+          "text": "Use the version given in Context if there is one; otherwise work it out from the commits since the last tag (`git describe --tags --abbrev=0`) and tell me." },
+        { "id": "changelog", "title": "Changelog", "role": "lead",
+          "text": "Update CHANGELOG.md from the commits since the last tag (Added / Changed / Fixed / Removed)." },
+        { "id": "bump", "title": "Bump version", "role": "coder",
+          "text": "Bump the version in the project files." },
+        "build", "tests", "commit", "push", "create_pr",
+        { "id": "tag", "title": "Tag + GitHub release", "role": "lead", "cap": "gh_pr",
+          "text": "Wait until I tell you the PR is merged. Then tag `v<version>` on {base_branch}, push the tag, and run `gh release create v<version>` with the changelog section as the notes. Attach build artifacts if the project produces them.",
+          "manual": "I'll tag and publish the release. Give me the commands and the release notes." }
+      ]
+    },
+
+    {
+      "id": "ci_setup",
+      "name": "CI / build setup (GitHub Actions)",
+      "description": "Add a build + lint + test workflow, make it pass, and suggest branch protection.",
+      "branch_prefix": "ci", "commit_type": "ci", "team": "Solo",
+      "fields": ["title", "ci_os", "guidance", "branch", "handoff_notes"],
+      "rules": ["Pin the official actions to their current major version."],
+      "steps": [
+        "orient", "sync_base", "create_branch",
+        { "id": "workflow", "title": "Write the workflow", "role": "coder", "cap": "gh_actions",
+          "text": "Add `.github/workflows/ci.yml` that runs `{build_cmd}`, `{lint_cmd}` and `{test_cmd}` on pushes to {base_branch} and on PRs, on {ci_os}, with dependency caching.",
+          "manual": "I'll add the workflow. Give me the YAML." },
+        "commit", "push", "create_pr", "ci_check",
+        { "id": "protection", "title": "Branch protection", "role": "lead", "default_mode": "Skip",
+          "text": "Suggest branch protection for {base_branch} (require CI, require a PR) and give me the `gh api` command. Don't apply it." }
+      ]
+    },
+
+    {
+      "id": "follow_up",
+      "name": "Pick up where I left off",
+      "description": "Short prompt for after you've done a manual step (opened a PR, tested, merged) and want the agent to continue.",
+      "branch_prefix": "feature", "commit_type": "feat", "team": "Solo",
+      "fields": ["title", "branch", "pr", "handoff_notes", "next_request"],
+      "rules": [],
+      "steps": [
+        { "id": "verify_state", "title": "Check current state", "role": "lead",
+          "text": "Before doing anything, check git branch / status and the latest commit in {repo_path}, and the PR if there is one. Tell me if anything doesn't match what I described." },
+        { "id": "next", "title": "Do the next thing", "role": "lead", "when": "next_request",
+          "text": "Do what's under 'What to do next'." },
+        { "use": "push", "default_mode": "Skip" },
+        { "use": "create_pr", "default_mode": "Skip" },
+        { "use": "review", "default_mode": "Skip" }
+      ]
+    }
+  ]
+}
