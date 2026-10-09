@@ -516,6 +516,48 @@
         { "use": "create_pr", "default_mode": "Skip" },
         { "use": "review", "default_mode": "Skip" }
       ]
+    },
+
+    {
+      "id": "taskmaskitator_change",
+      "name": "Taskmaskitator - board change (server + page)",
+      "description": "Taskmaskitator only. Back up the databases -> plan -> change server.py and index.html together -> pytest (Azure stubbed) -> live check on a scratch copy (port 8802) -> review -> docs (CHANGELOG, README, AGENTS.md) -> commit, push and open the PR -> stop so I can restart, test and merge.",
+      "branch_prefix": "feature", "commit_type": "feat", "team": "Full team",
+      "fields": ["title", "branch", "change_size", "guidance", "requirements", "acceptance", "test_plan", "files", "out_of_scope", "handoff_notes"],
+      "rules": [
+        "Workspace writes go under _write_lock in one transaction with one bump_rev, so open browsers pick them up on their next /api/rev poll. Never start a timer, close an interval or park another machine's ticket as a side effect.",
+        "Azure DevOps is read-only unless this request says otherwise; don't touch the time-stamping flow (azureQueue / postAzureComment) unless asked. Tests stub _azure_request with an obviously fake PAT.",
+        "Type hints on new public Python functions. Every new <input> gets a distinct name=\"ttb-...\" and autocomplete=\"off\"."
+      ],
+      "steps": [
+        { "use": "orient",
+          "text": "In {repo_path}, read AGENTS.md, the top of CHANGELOG.md and the README sections this request touches, then the code it touches in code/server.py and code/index.html. Check `git status` and the branch. Read the progress log C:\\Sandbox\\_AgentProgress\\taskmaskitator\\<branch>_Progress.md if it exists and carry on from its next step. (<branch> = the branch name with any / replaced by -). Summarize the current state in 3-5 lines." },
+        "sync_base",
+        "create_branch",
+        "plan",
+        { "id": "backup", "title": "Back up the databases", "role": "lead", "cap": "run_code",
+          "text": "Before running anything against data, back up databases/auth.db and databases/workspaces/*.db with the SQLite backup API from a read-only source (?mode=ro) to C:\\Sandbox\\_AgentProgress\\taskmaskitator\\backups\\<branch>\\ (<branch> = the branch name with any / replaced by -), run PRAGMA integrity_check on each copy, and report the result.",
+          "manual": "I'll back up databases/ myself. Tell me when you need it and wait." },
+        { "use": "implement",
+          "text": "Make the change in code/server.py and code/index.html together, following the surrounding patterns. Where the server now builds something the page also builds (e.g. a ticket's shape), say so in a comment in both places. Keep the diff to this request." },
+        { "use": "tests",
+          "text": "Write a scenario table (input -> expected result) for each acceptance criterion and the edge cases.{test_plan_note} Add pytest tests in tests/ using the srv fixture in tests/conftest.py (real server, temp databases, Azure stubbed via _azure_request; nothing reaches the network or databases/). Run `{test_cmd}` and report pass / fail per scenario plus the total." },
+        { "use": "build", "text": "Run `{build_cmd}` (there is no linter). Fix errors your change introduced; list pre-existing ones without fixing them." },
+        { "id": "scratch_qa", "title": "Live check on a scratch copy", "role": "qa", "cap": "run_code",
+          "text": "Copy code/ and the backup from the previous step into a scratch folder outside the repo. In each scratch workspace DB set app_config 'report' enabled to false BEFORE starting it, so it can't email anyone. Run the copy with `{run_cmd}` from that folder. Sign in by minting a session or connect token directly in the scratch auth.db (never use my password), then exercise each acceptance criterion through the API and in the browser, and check the console and server log for errors and for any token or PAT. Anything that reads Azure must be read-only. Afterwards stop the server and delete the scratch folder and any token files: they hold real data and secrets.",
+          "manual": "I'll test it on my instance. Give me numbered steps, what success looks like, and what to paste back." },
+        "review",
+        "qa",
+        { "use": "docs",
+          "text": "Follow the Documentation rule in AGENTS.md: a CHANGELOG.md entry under the current branch's 'Unreleased' heading (date, server / client / both, what it does for me, new endpoints, in-place schema upgrades); update the README section the feature belongs to (new endpoints go in 'API for agents and scripts') and remove anything the change made untrue; update AGENTS.md if a command, rule or workflow changed." },
+        { "id": "progress_log", "title": "Progress log", "role": "lead",
+          "text": "Append to the progress log C:\\Sandbox\\_AgentProgress\\taskmaskitator\\<branch>_Progress.md (create it if needed): date, backup path, what changed (files and functions), test counts, live-check results, anything found but not fixed, and the next step." },
+        "commit",
+        "push",
+        "create_pr",
+        { "id": "handoff", "title": "Stop for my test", "role": "lead",
+          "text": "Stop here. Tell me whether I need to restart the service (server.py changed) or only reload the page (index.html only), give me numbered test steps with what success looks like, and list anything found but not fixed with a recommendation. Give me the PR link; I merge it." }
+      ]
     }
   ]
 }
