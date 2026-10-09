@@ -61,6 +61,7 @@ All data is in `prompts.db` (SQLite) beside the script. Back that file up. `conf
 | Release | version -> changelog -> bump -> PR -> tag + `gh release` after the merge |
 | CI / build setup | GitHub Actions build + lint + test workflow, suggested branch protection |
 | Pick up where I left off | check the current state -> do the next thing |
+| Taskmaskitator - board change (server + page) | For the Taskmaskitator repo only: back up the databases -> plan -> change `server.py` and `index.html` together -> pytest (Azure stubbed) -> live check on a scratch copy (port 8802, daily report off) -> review, QA -> docs (CHANGELOG, README, AGENTS.md) -> progress log -> commit, push, PR -> stop so I can restart, test and merge |
 
 You can edit `templates.json` without touching the code:
 - **Steps** come from `step_library` and are reused by name (`"review"`), or overridden in place (`{"use": "review", "text": "..."}`).
