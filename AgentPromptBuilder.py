@@ -1002,6 +1002,18 @@ class App(tk.Tk):
             self.owner_vars[s["id"]] = var
             self.owner_combos[s["id"]] = combo
 
+        # Picking a starting model loads its team. Traced only now, so loading a
+        # saved request keeps the team it was saved with.
+        start_var = self.form.widgets.get(engine.START_MODEL_KEY)
+        if start_var is not None:
+            start_var.trace_add("write", lambda *a: self.on_start_model_changed(start_var.get()))
+
+    def on_start_model_changed(self, name):
+        preset = self.data.get("start_models", {}).get(name, {}).get("preset")
+        if preset:
+            self.preset_var.set(preset)
+            self.apply_preset(preset)
+
     # -- team ---------------------------------------------------------------
 
     def add_agent(self, agent=None, notify=True):

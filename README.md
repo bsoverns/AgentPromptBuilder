@@ -39,9 +39,9 @@ Every step in `templates.json` is one of three kinds of work: **trivial** (two o
 
 ### Starting model
 
-Every task type has a **Starting model** field (Opus 5.5 or Sonnet 5.5, default Opus 5.5): the model you'll paste the prompt into. For the Claude Code target it adds that model's fixed **Delegation** section and ends the prompt with a `step | status | who (Sonnet / Opus) | details and links` table. It replaces the role-based Delegation section below, and the warning bar flags a team lead whose model doesn't match. The text lives in `start_models` and `start_model_stop` in templates.json. Targets that can't start subagents (Codex, chat, local) ignore it.
+Every task type has a **Starting model** field: **Team decides** (the default), **Opus 5.5** or **Sonnet 5.5**. It's the model you'll paste the prompt into. Picking Opus or Sonnet loads that model's Cost saver team. Opening a saved request doesn't reload it, so a team you edited stays as you saved it. For Claude Code, the warning bar flags a team whose lead doesn't run on the starting model. Targets that can't start subagents (Codex, chat, local) ignore it. The mapping lives in `start_models` in templates.json (`lead` model and `preset`).
 
-Without a starting model entry, the prompt gets a **Delegation (cost control)** section from the team's ops / architect agents, and the final table shows each step's agent and model.
+The **Delegation (cost control)** section always comes from the team's ops / architect agents, so it always matches the Team table. The final table shows each step's agent and model.
 
 - **Start the session on the lead's model.** The prompt can't change the session's model. It only picks the models for subagents.
 - **Which one to use:** the Sonnet lead is usually cheaper on routine, well-defined requests. The Opus lead holds up better on ambiguous or long, multi-rule requests, because the main loop is what follows the procedure. Run a few similar requests each way and compare usage, and count any rework against the cheaper run.

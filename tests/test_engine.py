@@ -259,37 +259,53 @@ def test_problems_handoff_mentions_branch(data, project):
 
 def _with_start_models(data):
     data["start_models"] = {
-        "Opus 5.5": {"lead": "opus", "delegation": ["You (Opus) decide.", "- Use Sonnet for chores."]},
-        "Sonnet 5.5": {"lead": "sonnet", "delegation": ["You (Sonnet) coordinate."]},
+        "Opus 5.5": {"lead": "opus", "preset": "Opus team"},
+        "Sonnet 5.5": {"lead": "sonnet", "preset": "Sonnet team"},
     }
-    data["start_model_stop"] = "End with a table: step | status | who (Sonnet / Opus) | details."
-    data["fields"]["start_model"] = {"type": "choice", "options_from": "start_models", "default": "Opus 5.5"}
+    data["team_presets"].update({"Opus team": OPUS_LEAD, "Sonnet team": SONNET_LEAD})
+    data["fields"]["start_model"] = {
+        "type": "choice",
+        "options": ["Team decides", "Opus 5.5", "Sonnet 5.5"],
+        "default": "Team decides",
+    }
     data["templates"][0]["fields"].insert(1, "start_model")
     return data
 
 
-def test_start_model_defaults_to_opus(data, project):
-    out = build(_with_start_models(data), project, {"title": "X"})
-    assert "## Delegation\nYou (Opus) decide.\n- Use Sonnet for chores.\n" in out
-    assert out.endswith("## When you stop\nEnd with a table: step | status | who (Sonnet / Opus) | details.")
+def _start_problems(data, project, start_model, team, target="claude_code"):
+    values = {"title": "X", "start_model": start_model}
+    return engine.problems(data, data["templates"][0], project, values, {}, team, target, {})
+
+
+def test_start_model_team_decides_adds_nothing(data, project):
+    data = _with_start_models(data)
+    out = build(data, project, {"title": "X"})
+    assert "## Delegation" not in out
     assert "Starting model" not in out and "start_model" not in out
+    assert _start_problems(data, project, "Team decides", TEAM) == []
 
 
-def test_start_model_sonnet_replaces_role_delegation(data, project):
+def test_start_model_delegation_comes_from_the_team(data, project):
     data = _with_start_models(data)
-    data["delegation"] = {"ops": ["Only {ops} gets mechanical work."]}
-    args = (data, data["templates"][0], project, {"title": "X", "start_model": "Sonnet 5.5"}, {}, OPUS_LEAD)
-    out = engine.build_prompt(*args, "claude_code", {})
-    assert "You (Sonnet) coordinate." in out and "You (Opus)" not in out
-    assert "(cost control)" not in out
-    assert any("Starting model is Sonnet 5.5" in i for i in engine.problems(*args, "claude_code", {}))
+    data["delegation"] = {"architect": ["{architect} thinks."]}
+    values = {"title": "X", "start_model": "Sonnet 5.5"}
+    out = engine.build_prompt(data, data["templates"][0], project, values, {}, SONNET_LEAD, "claude_code", {})
+    assert "## Delegation (cost control)\n- Sage thinks." in out
+    assert _start_problems(data, project, "Sonnet 5.5", SONNET_LEAD) == []
 
 
-def test_start_model_ignored_without_subagents(data, project):
+def test_start_model_warns_on_lead_mismatch(data, project):
     data = _with_start_models(data)
-    args = (data, data["templates"][0], project, {"title": "X"}, {}, TEAM)
-    out = engine.build_prompt(*args, "chat", {})
-    assert "## Delegation" not in out and "who (Sonnet / Opus)" not in out
+    issues = _start_problems(data, project, "Sonnet 5.5", OPUS_LEAD)
+    assert any("Starting model is Sonnet 5.5" in i and "'Sonnet team'" in i for i in issues)
+    assert any("lead's model is 'not set'" in i for i in _start_problems(data, project, "Opus 5.5", TEAM))
+    assert not any("Starting model" in i for i in _start_problems(data, project, "Opus 5.5", TEAM, "chat"))
+
+
+def test_validate_rejects_unknown_start_preset(data):
+    data = _with_start_models(data)
+    data["start_models"]["Opus 5.5"]["preset"] = "Ghost"
+    assert engine.validate(data) == ["start_models: 'Opus 5.5' has unknown preset 'Ghost'"]
 
 
 # -- real templates.json -------------------------------------------------------
@@ -306,6 +322,5 @@ def test_real_templates_all_build(templates, project):
                 templates, template, project, {"title": "Smoke"}, {}, None, target, {}, request_id=1
             )
             assert text.startswith(f"# {template['name']}: Smoke (request #1)")
-            if templates["targets"][target].get("subagents"):
-                assert "## Delegation\nYou (Opus) make the decisions" in text
-                assert text.endswith(templates["start_model_stop"])
+            assert "## Delegation" not in text
+            assert "Small change" not in text

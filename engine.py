@@ -16,10 +16,10 @@ Inputs:
     target_id key of data["targets"] (claude_code, agentic_cli, chat, local)
     caps      {capability key: bool}
 
-Starting model: the request's "start_model" field picks an entry of
-data["start_models"]. For targets that can start subagents, its delegation
-lines become the prompt's Delegation section (replacing the role-based one)
-and data["start_model_stop"] replaces the closing table.
+Starting model: the request's "start_model" field names the model the prompt
+is pasted into, an entry of data["start_models"] ({"lead", "preset"}). The GUI
+loads that preset when it's picked; the engine only warns when the team's
+lead doesn't run on that model. The Delegation text always comes from the team.
 
 Cost routing: a step's "work" is "trivial", "mechanical" or absent (judgment).
 With an "ops" agent on the team, mechanical steps go to it. With an "architect"
@@ -131,6 +131,9 @@ def validate(data: dict) -> list[str]:
     for sid, step in library.items():
         if step.get("work") and step["work"] not in WORK_KINDS:
             errors.append(f"step_library: '{sid}' has unknown work '{step['work']}'")
+    for name, start in data.get("start_models", {}).items():
+        if start.get("preset") and start["preset"] not in presets:
+            errors.append(f"start_models: '{name}' has unknown preset '{start['preset']}'")
     for t in data.get("templates", []):
         tid = t.get("id", "?")
         for key in t.get("fields", []):
@@ -316,7 +319,6 @@ def build_prompt(
     multi = len(team) > 1
     lead = lead_of(team)
     v = computed_values(data, template, project, raw_values, request_id, team)
-    start = start_model_of(data, v, target)
     out = []
 
     heading = template["name"]
@@ -388,15 +390,12 @@ def build_prompt(
         out.append("")
         # Cost routing only means something when the agents really are separate models.
         routing = [(r, a) for r in ROUTING_ROLES if (a := router_of(team, r))]
-        if routing and target.get("subagents") and not start:
+        if routing and target.get("subagents"):
             names = {r: a["name"] for r, a in routing}
             out.append("## Delegation (cost control)")
             for role, _agent in routing:
                 out += [f"- {render(line, names)}" for line in data.get("delegation", {}).get(role, [])]
             out.append("")
-
-    if start:
-        out += ["## Delegation", *start.get("delegation", []), ""]
 
     # Steps
     steps = [s for s in resolve_steps(data, template) if not s.get("when") or v.get(s["when"])]
@@ -451,9 +450,6 @@ def build_prompt(
         out += [f"- {r}" for r in rules]
         out.append("")
 
-    if start and data.get("start_model_stop"):
-        return "\n".join([*out, "## When you stop", data["start_model_stop"]])
-
     agent_col = ("agent (model) | " if any(a["model"] for a in team) else "agent | ") if multi else ""
     out += [
         "## When you stop",
@@ -505,10 +501,10 @@ def problems(
         )
     start = start_model_of(data, v, target)
     lead_model = lead_of(agents)["model"].lower()
-    if start and start.get("lead") and lead_model and start["lead"] not in lead_model:
+    if start and start.get("lead") and start["lead"] not in lead_model:
         out.append(
             f"Starting model is {v[START_MODEL_KEY]} but the team lead's model is "
-            f"'{lead_of(agents)['model']}'"
+            f"'{lead_of(agents)['model'] or 'not set'}' (pick the '{start.get('preset', '')}' preset)"
         )
     if missing:
         out.append("Unfilled: " + ", ".join(f"{{{k}}}" for k in sorted(missing)))
