@@ -148,6 +148,60 @@ def test_resolve_owners_replaces_stale_names(data):
     assert own["review"] == "Atlas"
 
 
+OPUS_LEAD = [
+    {"name": "Atlas", "role": "lead", "model": "opus"},
+    {"name": "Runner", "role": "ops", "model": "sonnet"},
+]
+SONNET_LEAD = [
+    {"name": "Atlas", "role": "lead", "model": "sonnet"},
+    {"name": "Sage", "role": "architect", "model": "opus"},
+]
+
+
+def test_ops_takes_mechanical_steps_only():
+    target = {"agentic": True}
+    assert engine.default_owner({"role": "coder", "work": "mechanical"}, OPUS_LEAD, {}, target) == "Runner"
+    assert engine.default_owner({"role": "lead", "work": "trivial"}, OPUS_LEAD, {}, target) == "Atlas"
+    assert engine.default_owner({"role": "coder"}, OPUS_LEAD, {}, target) == "Atlas"
+
+
+def test_architect_takes_judgment_steps_from_the_lead():
+    target = {"agentic": True}
+    assert engine.default_owner({"role": "lead"}, SONNET_LEAD, {}, target) == "Sage"
+    assert engine.default_owner({"role": "coder"}, SONNET_LEAD, {}, target) == "Sage"
+    assert engine.default_owner({"role": "coder", "work": "mechanical"}, SONNET_LEAD, {}, target) == "Atlas"
+    assert engine.default_owner({"role": "lead", "work": "trivial"}, SONNET_LEAD, {}, target) == "Atlas"
+    # A matching specialist still wins over the architect.
+    team = SONNET_LEAD + [{"name": "Hawk", "role": "reviewer"}]
+    assert engine.default_owner({"role": "reviewer"}, team, {}, target) == "Hawk"
+
+
+def test_routing_ignored_without_router_roles(data):
+    step = dict(data["step_library"]["implement"], work="mechanical")
+    assert engine.default_owner(step, TEAM, {}, {"agentic": True}) == "Forge"
+
+
+def test_delegation_section(data, project):
+    data["delegation"] = {"ops": ["Only {ops} gets mechanical work."]}
+    args = (data, data["templates"][0], project, {"title": "X"}, {}, OPUS_LEAD)
+    out = engine.build_prompt(*args, "claude_code", {})
+    assert "## Delegation (cost control)\n- Only Runner gets mechanical work." in out
+    assert "Agent tool's `model`" in out
+    assert "step | agent (model) | status" in out
+    assert "## Delegation" not in engine.build_prompt(*args, "chat", {})
+
+
+def test_problems_models_without_subagents(data, project):
+    args = (data, data["templates"][0], project, {"title": "X"}, {}, OPUS_LEAD)
+    assert any("models are ignored" in i for i in engine.problems(*args, "chat", {}))
+    assert not any("models are ignored" in i for i in engine.problems(*args, "claude_code", {}))
+
+
+def test_validate_rejects_unknown_work(data):
+    data["step_library"]["orient"]["work"] = "easy"
+    assert engine.validate(data) == ["step_library: 'orient' has unknown work 'easy'"]
+
+
 # -- build_prompt / problems ---------------------------------------------------
 
 
@@ -200,6 +254,60 @@ def test_problems_handoff_mentions_branch(data, project):
     assert any("Hand-off notes mention the branch" in i for i in issues)
 
 
+# -- starting model -------------------------------------------------------------
+
+
+def _with_start_models(data):
+    data["start_models"] = {
+        "Opus 5.5": {"lead": "opus", "preset": "Opus team"},
+        "Sonnet 5.5": {"lead": "sonnet", "preset": "Sonnet team"},
+    }
+    data["team_presets"].update({"Opus team": OPUS_LEAD, "Sonnet team": SONNET_LEAD})
+    data["fields"]["start_model"] = {
+        "type": "choice",
+        "options": ["Team decides", "Opus 5.5", "Sonnet 5.5"],
+        "default": "Team decides",
+    }
+    data["templates"][0]["fields"].insert(1, "start_model")
+    return data
+
+
+def _start_problems(data, project, start_model, team, target="claude_code"):
+    values = {"title": "X", "start_model": start_model}
+    return engine.problems(data, data["templates"][0], project, values, {}, team, target, {})
+
+
+def test_start_model_team_decides_adds_nothing(data, project):
+    data = _with_start_models(data)
+    out = build(data, project, {"title": "X"})
+    assert "## Delegation" not in out
+    assert "Starting model" not in out and "start_model" not in out
+    assert _start_problems(data, project, "Team decides", TEAM) == []
+
+
+def test_start_model_delegation_comes_from_the_team(data, project):
+    data = _with_start_models(data)
+    data["delegation"] = {"architect": ["{architect} thinks."]}
+    values = {"title": "X", "start_model": "Sonnet 5.5"}
+    out = engine.build_prompt(data, data["templates"][0], project, values, {}, SONNET_LEAD, "claude_code", {})
+    assert "## Delegation (cost control)\n- Sage thinks." in out
+    assert _start_problems(data, project, "Sonnet 5.5", SONNET_LEAD) == []
+
+
+def test_start_model_warns_on_lead_mismatch(data, project):
+    data = _with_start_models(data)
+    issues = _start_problems(data, project, "Sonnet 5.5", OPUS_LEAD)
+    assert any("Starting model is Sonnet 5.5" in i and "'Sonnet team'" in i for i in issues)
+    assert any("lead's model is 'not set'" in i for i in _start_problems(data, project, "Opus 5.5", TEAM))
+    assert not any("Starting model" in i for i in _start_problems(data, project, "Opus 5.5", TEAM, "chat"))
+
+
+def test_validate_rejects_unknown_start_preset(data):
+    data = _with_start_models(data)
+    data["start_models"]["Opus 5.5"]["preset"] = "Ghost"
+    assert engine.validate(data) == ["start_models: 'Opus 5.5' has unknown preset 'Ghost'"]
+
+
 # -- real templates.json -------------------------------------------------------
 
 
@@ -214,3 +322,5 @@ def test_real_templates_all_build(templates, project):
                 templates, template, project, {"title": "Smoke"}, {}, None, target, {}, request_id=1
             )
             assert text.startswith(f"# {template['name']}: Smoke (request #1)")
+            assert "## Delegation" not in text
+            assert "Small change" not in text

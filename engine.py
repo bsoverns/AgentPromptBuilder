@@ -15,6 +15,16 @@ Inputs:
     team      [{"name", "role", "model"}]; the first "lead" runs the show
     target_id key of data["targets"] (claude_code, agentic_cli, chat, local)
     caps      {capability key: bool}
+
+Starting model: the request's "start_model" field names the model the prompt
+is pasted into, an entry of data["start_models"] ({"lead", "preset"}). The GUI
+loads that preset when it's picked; the engine only warns when the team's
+lead doesn't run on that model. The Delegation text always comes from the team.
+
+Cost routing: a step's "work" is "trivial", "mechanical" or absent (judgment).
+With an "ops" agent on the team, mechanical steps go to it. With an "architect"
+agent, judgment steps that would land on the lead go to it instead, so a cheap
+lead model can coordinate while an expensive one does the thinking.
 """
 
 import re
@@ -31,6 +41,7 @@ PLACEHOLDER = re.compile(r"\{(\w+)\}")
 OPTIONAL_KEYS = {"issue_note", "closes_note", "framework_note", "test_plan_note", "reviewer_note"}
 
 HANDOFF_KEY = "handoff_notes"
+START_MODEL_KEY = "start_model"
 CMD_KEYS = ("build", "test", "lint", "run", "outdated")
 
 # Project values shown under Context, in this order. Commands are shown as code.
@@ -50,6 +61,9 @@ PROJECT_CONTEXT = [
 ]
 
 SOLO = [{"name": "Claude", "role": "lead"}]
+
+WORK_KINDS = ("trivial", "mechanical")
+ROUTING_ROLES = ("ops", "architect")
 
 
 # ---------------------------------------------------------------------------
@@ -102,12 +116,24 @@ def lead_of(team: list[dict]) -> dict:
     return next((a for a in team if a["role"] == "lead"), team[0])
 
 
+def router_of(team: list[dict], role: str) -> dict | None:
+    """The first agent with a routing role (ops / architect), unless it's also the lead."""
+    lead = lead_of(team)
+    return next((a for a in team if a["role"] == role and a is not lead), None)
+
+
 def validate(data: dict) -> list[str]:
     """Return a list of problems in templates.json (empty when it's usable)."""
     errors = []
     library = data.get("step_library", {})
     fields = data.get("fields", {})
     presets = data.get("team_presets", {})
+    for sid, step in library.items():
+        if step.get("work") and step["work"] not in WORK_KINDS:
+            errors.append(f"step_library: '{sid}' has unknown work '{step['work']}'")
+    for name, start in data.get("start_models", {}).items():
+        if start.get("preset") and start["preset"] not in presets:
+            errors.append(f"start_models: '{name}' has unknown preset '{start['preset']}'")
     for t in data.get("templates", []):
         tid = t.get("id", "?")
         for key in t.get("fields", []):
@@ -119,6 +145,8 @@ def validate(data: dict) -> list[str]:
                 errors.append(f"{tid}: unknown library step '{ref}'")
             if not isinstance(item, str) and not ref and not item.get("id"):
                 errors.append(f"{tid}: a step has no id")
+            if not isinstance(item, str) and item.get("work") and item["work"] not in WORK_KINDS:
+                errors.append(f"{tid}: a step has unknown work '{item['work']}'")
         if t.get("team") and t["team"] not in presets:
             errors.append(f"{tid}: unknown team preset '{t['team']}'")
     return errors
@@ -153,9 +181,17 @@ def default_owner(step: dict, team: list[dict] | None, caps: dict, target: dict)
     if cap and (not caps.get(cap, True) or not target.get("agentic", True)):
         return MODE_ME
     team = clean_team(team)
+    lead = lead_of(team)
+    work = step.get("work")
+    ops = router_of(team, "ops")
+    if work == "mechanical" and ops:
+        return ops["name"]
     role = step.get("role", "lead")
-    match = next((a for a in team if a["role"] == role), None)
-    return (match or lead_of(team))["name"]
+    owner = next((a for a in team if a["role"] == role), None) or lead
+    architect = router_of(team, "architect")
+    if not work and owner is lead and architect:
+        return architect["name"]
+    return owner["name"]
 
 
 def resolve_owners(
@@ -243,6 +279,13 @@ def computed_values(
     return v
 
 
+def start_model_of(data: dict, values: dict, target: dict) -> dict | None:
+    """The chosen starting model's entry, when the target can start subagents."""
+    if not target.get("subagents"):
+        return None
+    return data.get("start_models", {}).get(values.get(START_MODEL_KEY, ""))
+
+
 def _field_lines(label: str, value: str, code: bool = False) -> list[str]:
     if "\n" in value:
         return [f"- {label}:"] + [f"    {line}" for line in value.splitlines() if line.strip()]
@@ -300,7 +343,7 @@ def build_prompt(
             out.append(f"- {v['language']} conventions: {notes}")
     for key in template_fields:
         spec = fields.get(key, {})
-        if key in ("title", HANDOFF_KEY) or spec.get("section") or not v.get(key):
+        if key in ("title", HANDOFF_KEY, START_MODEL_KEY) or spec.get("section") or not v.get(key):
             continue
         out += _field_lines(spec.get("label", key), v[key], code=(key == "branch"))
     out.append("")
@@ -324,7 +367,11 @@ def build_prompt(
             ]
         out.append("")
         if target.get("subagents"):
-            model_note = " (use the listed model where one is given)" if any(a["model"] for a in team) else ""
+            model_note = (
+                " (pass its listed model as the Agent tool's `model`, e.g. `sonnet`; blank means the default)"
+                if any(a["model"] for a in team if a is not lead)
+                else ""
+            )
             out.append(
                 f"You are **{lead['name']}**, the lead. Start each other agent as a subagent with the "
                 f"Agent tool, under the name above{model_note}, with its brief and only the context "
@@ -341,6 +388,14 @@ def build_prompt(
                 "and doesn't fix it."
             )
         out.append("")
+        # Cost routing only means something when the agents really are separate models.
+        routing = [(r, a) for r in ROUTING_ROLES if (a := router_of(team, r))]
+        if routing and target.get("subagents"):
+            names = {r: a["name"] for r, a in routing}
+            out.append("## Delegation (cost control)")
+            for role, _agent in routing:
+                out += [f"- {render(line, names)}" for line in data.get("delegation", {}).get(role, [])]
+            out.append("")
 
     # Steps
     steps = [s for s in resolve_steps(data, template) if not s.get("when") or v.get(s["when"])]
@@ -395,7 +450,7 @@ def build_prompt(
         out += [f"- {r}" for r in rules]
         out.append("")
 
-    agent_col = "agent | " if multi else ""
+    agent_col = ("agent (model) | " if any(a["model"] for a in team) else "agent | ") if multi else ""
     out += [
         "## When you stop",
         "Whether you're finished, blocked, or waiting on me, end with a table: "
@@ -438,6 +493,18 @@ def problems(
         out.append(
             "Hand-off notes mention the branch, but the git setup steps are still assigned "
             "(use 'I already branched')"
+        )
+    agents = clean_team(team)
+    if any(a["model"] for a in agents if a is not lead_of(agents)) and not target.get("subagents"):
+        out.append(
+            "Agent models are ignored: this target can't start subagents, so one model plays every role"
+        )
+    start = start_model_of(data, v, target)
+    lead_model = lead_of(agents)["model"].lower()
+    if start and start.get("lead") and start["lead"] not in lead_model:
+        out.append(
+            f"Starting model is {v[START_MODEL_KEY]} but the team lead's model is "
+            f"'{lead_of(agents)['model'] or 'not set'}' (pick the '{start.get('preset', '')}' preset)"
         )
     if missing:
         out.append("Unfilled: " + ", ".join(f"{{{k}}}" for k in sorted(missing)))

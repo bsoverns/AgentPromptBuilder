@@ -24,9 +24,31 @@ Only the Python standard library is needed (tkinter and sqlite3 ship with the Wi
 | **Task type** | What kind of work it is (see the table below). Switching task type keeps every value the new type also uses. |
 | **Target** | Who runs the prompt. **Claude Code** gets subagent instructions; **Codex / agentic CLI** plays the roles in sequence; **Chat / API** and **Local model** can't run anything, so steps that need tools become *Me (manual)* and the agent gives you the commands. |
 | **Capabilities** | What the agent can do right now. A step tied to a capability that's switched off defaults to **Me (manual)**. |
-| **Agent team** | Named agents with a role (lead, coder, reviewer, QA, security, docs) and an optional model. Presets: Solo, Coder + Reviewer, Full team, Bug hunt, Review pair. With more than one agent, the prompt gets a Team table and each step names its agent. |
+| **Agent team** | Named agents with a role (lead, coder, reviewer, QA, security, docs, ops, architect) and an optional model. Presets: Solo, Coder + Reviewer, Full team, Bug hunt, Review pair, and two cost savers (see [Saving tokens](#saving-tokens-model-routing)). With more than one agent, the prompt gets a Team table and each step names its agent. |
 | **Steps** | Each step goes to an agent, **Me (manual)**, **Already done** or **Skip**. Steps default to the agent whose role matches the step. **I already branched** marks the git setup steps done. |
 | **Warnings** | The red line lists anything that would make the agent guess: no project, no title, duplicate agent names, `{placeholders}` that are still empty, or hand-off notes that say you branched while the branch steps are still assigned. |
+
+## Saving tokens: model routing
+
+Every step in `templates.json` is one of three kinds of work: **trivial** (two or three commands, such as branching or pushing), **mechanical** (build and test runs, commit, PR, CI checks, fetching a PR), or **judgment** (everything else, the default). Two roles route steps by that kind:
+
+| Preset | Team | Who does what |
+|---|---|---|
+| **Cost saver - Opus lead** | Atlas lead `opus`, Hawk reviewer `sonnet`, Runner ops `sonnet` | Atlas does the judgment and trivial steps itself. Mechanical steps go to Runner. Runner reports failures, and Atlas fixes them. |
+| **Cost saver - Sonnet lead** | Atlas lead `sonnet`, Sage architect `opus`, Hawk reviewer `sonnet` | Atlas coordinates and does the trivial and mechanical steps. Judgment steps that would land on the lead or on a missing coder go to Sage, which stays alive between steps (SendMessage) so it doesn't re-read everything. |
+
+### Starting model
+
+Every task type has a **Starting model** field: **Team decides** (the default), **Opus 5.5** or **Sonnet 5.5**. It's the model you'll paste the prompt into. Picking Opus or Sonnet loads that model's Cost saver team. Opening a saved request doesn't reload it, so a team you edited stays as you saved it. For Claude Code, the warning bar flags a team whose lead doesn't run on the starting model. Targets that can't start subagents (Codex, chat, local) ignore it. The mapping lives in `start_models` in templates.json (`lead` model and `preset`).
+
+The **Delegation (cost control)** section always comes from the team's ops / architect agents, so it always matches the Team table. The final table shows each step's agent and model.
+
+- **Start the session on the lead's model.** The prompt can't change the session's model. It only picks the models for subagents.
+- **Which one to use:** the Sonnet lead is usually cheaper on routine, well-defined requests. The Opus lead holds up better on ambiguous or long, multi-rule requests, because the main loop is what follows the procedure. Run a few similar requests each way and compare usage, and count any rework against the cheaper run.
+- Subagents start cold, so delegating a 2-3 command step costs more than doing it inline. That's why trivial steps stay with the lead.
+- Writing code, designing tests and deciding why something failed are never delegated to the cheap model.
+- Models only matter for **Claude Code**: on other targets one model plays every role, and the warning line says so.
+- Tick the **Save team as agent files** step to write the team to `.claude/agents/*.md` (with each `model:`), so later sessions can reuse it.
 
 ## Saving, recalling and reusing
 
@@ -61,12 +83,14 @@ All data is in `prompts.db` (SQLite) beside the script. Back that file up. `conf
 | Release | version -> changelog -> bump -> PR -> tag + `gh release` after the merge |
 | CI / build setup | GitHub Actions build + lint + test workflow, suggested branch protection |
 | Pick up where I left off | check the current state -> do the next thing |
+| Taskmaskitator - board change (server + page) | For the Taskmaskitator repo only: back up the databases -> plan -> change `server.py` and `index.html` together -> pytest (Azure stubbed) -> live check on a scratch copy (port 8802, daily report off) -> review, QA -> docs (CHANGELOG, README, AGENTS.md) -> progress log -> commit, push, PR -> stop so I can restart, test and merge |
 
 You can edit `templates.json` without touching the code:
 - **Steps** come from `step_library` and are reused by name (`"review"`), or overridden in place (`{"use": "review", "text": "..."}`).
 - **`fields`** with a `section` get their own heading in the prompt. Fields with `clear_on_copy` are cleared by Copy to project. `choice` fields can add a rule for the selected option.
 - **`languages`** hold the default build / test / lint / outdated commands and conventions.
 - **`roles`**, **`team_presets`**, **`targets`**, **`capabilities`** and **`global_rules`** are all plain JSON.
+- A step's **`work`** (`"trivial"` or `"mechanical"`; blank means judgment) drives the cost routing. **`delegation`** holds the Delegation section's text for the `ops` and `architect` roles (`{ops}` and `{architect}` become the agents' names).
 - **Placeholders**: any field or project key, plus `branch`, `request_id`, `compare_link`, `commit_type`, `issue_ref`, `team_names`, `today`, `project_name`, `build_cmd`, `test_cmd`, `lint_cmd`, `run_cmd` and `outdated_cmd`.
 
 `engine.py` builds the prompt and has no UI, so a future API harness can import it and produce the same prompts. `store.py` is the only code that touches the database, so the local board system can replace it later by implementing the same methods.
