@@ -84,10 +84,12 @@ All data is in `prompts.db` (SQLite) beside the script. Back that file up. `conf
 | CI / build setup | GitHub Actions build + lint + test workflow, suggested branch protection |
 | Pick up where I left off | check the current state -> do the next thing |
 | Taskmaskitator - board change (server + page) | For the Taskmaskitator repo only: back up the databases -> plan -> change `server.py` and `index.html` together -> pytest (Azure stubbed) -> live check on a scratch copy (port 8802, daily report off) -> review, QA -> docs (CHANGELOG, README, AGENTS.md) -> progress log -> commit, push, PR -> stop so I can restart, test and merge |
+| Claude Office Workers - theme / feature / fix | For the ClaudeOfficeWorkers repo only (Cost saver - Opus lead team, `YYYY-MM-DD_Short_Description` branch): pick **Kind of change** (Theme, Feature or Bug fix) for its checklist -> pull `main`, branch -> list problems and plan, wait for my OK -> change `index.html` (and `server.py`) -> `py_compile` and every theme on test port 8790 (never the real office on 8777) -> review -> README / AGENTS.md -> stop `ClaudeOffice.exe`, rebuild and stop for my test -> after my OK: commit, push, PR |
 
 You can edit `templates.json` without touching the code:
 - **Steps** come from `step_library` and are reused by name (`"review"`), or overridden in place (`{"use": "review", "text": "..."}`).
 - **`fields`** with a `section` get their own heading in the prompt. Fields with `clear_on_copy` are cleared by Copy to project. `choice` fields can add a rule for the selected option.
+- A template's **`branch_style`** set to `"dated"` names a blank branch `YYYY-MM-DD_Title_Words` instead of `<prefix>/<request id>-<title>`.
 - **`languages`** hold the default build / test / lint / outdated commands and conventions.
 - **`roles`**, **`team_presets`**, **`targets`**, **`capabilities`** and **`global_rules`** are all plain JSON.
 - A step's **`work`** (`"trivial"` or `"mechanical"`; blank means judgment) drives the cost routing. **`delegation`** holds the Delegation section's text for the `ops` and `architect` roles (`{ops}` and `{architect}` become the agents' names).
