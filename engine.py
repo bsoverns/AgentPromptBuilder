@@ -76,6 +76,13 @@ def slug(text: str | None, maxlen: int = 40) -> str:
     return s[:maxlen].rstrip("-")
 
 
+def title_words(text: str | None, maxlen: int = 40) -> str:
+    """'add a wild-west theme' -> 'Add_A_Wild_West_Theme' (for dated branch names)."""
+    words = re.findall(r"[A-Za-z0-9]+", text or "")
+    s = "_".join(w[:1].upper() + w[1:] for w in words)
+    return s[:maxlen].rstrip("_")
+
+
 def issue_number(text: str) -> str:
     """The issue number in a URL or reference ('.../issues/12#issuecomment-345' -> '12')."""
     # Last resort is the LAST number, so digits in an owner or repo name aren't picked up.
@@ -264,6 +271,11 @@ def computed_values(
         " Cover every scenario under 'Test scenarios (from me)'." if v.get("test_plan") else ""
     )
 
+    if not v.get("branch") and template.get("branch_style") == "dated":
+        # Repos whose rules want YYYY-MM-DD_Short_Description branches.
+        words = title_words(v.get("title", ""))
+        if words:
+            v["branch"] = f"{v['today']}_{words}"
     if not v.get("branch"):
         title = slug(v.get("title", ""))
         if title:

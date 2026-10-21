@@ -82,6 +82,14 @@ def test_branch_from_title_with_request_id(data, project):
     assert v["compare_link"] == "https://github.com/me/demo/compare/main...feature/7-dark-mode?expand=1"
 
 
+def test_dated_branch_style(data, project):
+    template = dict(data["templates"][0], branch_style="dated")
+    v = engine.computed_values(data, template, project, {"title": "add a wild-west theme"}, request_id=7)
+    assert v["branch"] == f"{v['today']}_Add_A_Wild_West_Theme"
+    v = engine.computed_values(data, template, project, {"title": "X", "branch": "mine"})
+    assert v["branch"] == "mine"
+
+
 def test_explicit_branch_wins(data, project):
     values = {"title": "Dark mode", "branch": "fix/mine"}
     v = engine.computed_values(data, data["templates"][0], project, values, request_id=7)
