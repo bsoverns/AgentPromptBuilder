@@ -50,7 +50,7 @@
     "qa":       "Owns the test plan and acceptance criteria. Runs the checks and reports pass / fail per criterion with evidence. Doesn't fix code; sends failures back to the coder.",
     "security": "Looks for injection, secrets in code or logs, unsafe deserialization, path traversal, missing auth checks and vulnerable dependencies.",
     "docs":     "Keeps README, CHANGELOG and comments in step with the change.",
-    "ops":      "Runs mechanical work from an exact brief: builds and test runs, git / gh, posting, and condensing long command output. Reports results verbatim (exit codes, URLs, pass / fail counts) and stops on the first error. Makes no design decisions and never changes code, tests or expected results to make something pass.",
+    "ops":      "A fetch-and-run helper on a cheaper model. Does only what its brief spells out: runs the listed commands (builds, test runs, CI watches), gathers data (searches, file contents, logs, web pages), copies or moves the named files, and posts text the lead already wrote, word for word. Returns facts, not opinions: exit codes, pass / fail counts, URLs, paths, and the exact failing lines. Stops on the first error and reports it. Makes no decisions, writes nothing of its own (code, tests, messages, commit or PR text) and never changes code, tests or expected results to make something pass. If it can't finish, it tells the lead what blocked it and never asks me to do the work.",
     "architect": "Does the judgment work at the steps assigned to it: reading the code and the request, deciding behavior, the questions to me, the plan, writing the code, designing the tests and diagnosing failures. Reads the files itself rather than relying on a paraphrase."
   },
 
@@ -60,16 +60,20 @@
     "Full team":        [ { "name": "Atlas", "role": "lead" }, { "name": "Forge", "role": "coder" }, { "name": "Hawk", "role": "reviewer" }, { "name": "Probe", "role": "qa" } ],
     "Bug hunt":         [ { "name": "Atlas", "role": "lead" }, { "name": "Hawk", "role": "reviewer" }, { "name": "Owl", "role": "reviewer" }, { "name": "Probe", "role": "qa" }, { "name": "Forge", "role": "coder" } ],
     "Review pair":      [ { "name": "Atlas", "role": "lead" }, { "name": "Hawk", "role": "reviewer" }, { "name": "Owl", "role": "reviewer" } ],
-    "Cost saver - Opus lead":   [ { "name": "Atlas", "role": "lead", "model": "opus" }, { "name": "Hawk", "role": "reviewer", "model": "sonnet" }, { "name": "Runner", "role": "ops", "model": "sonnet" } ],
-    "Cost saver - Sonnet lead": [ { "name": "Atlas", "role": "lead", "model": "sonnet" }, { "name": "Sage", "role": "architect", "model": "opus" }, { "name": "Hawk", "role": "reviewer", "model": "sonnet" } ]
+    "Cost saver - Opus lead":   [ { "name": "Atlas", "role": "lead", "model": "opus" }, { "name": "Hawk", "role": "reviewer", "model": "opus" }, { "name": "Runner", "role": "ops", "model": "sonnet" } ],
+    "Cost saver - Sonnet lead": [ { "name": "Atlas", "role": "lead", "model": "sonnet" }, { "name": "Sage", "role": "architect", "model": "opus" }, { "name": "Hawk", "role": "reviewer", "model": "opus" } ]
   },
 
   "delegation": {
     "ops": [
-      "Only the steps assigned to {ops} are delegated. Do your own steps yourself; never start an agent for a step of two or three commands.",
-      "Brief {ops} with exact commands, paths and the output you want back (pass / fail counts, URLs, exit codes), not pasted file contents. It returns a summary, not raw output.",
-      "Never delegate writing code, designing tests or deciding why something failed. Where a step assigned to {ops} says to fix something, {ops} reports it and you diagnose and fix it. If its result looks wrong, redo the step yourself rather than re-delegating.",
-      "Wait for a subagent's final message before using its result. Its report counts as verified only after you've checked the paths and claims in it."
+      "You are the decision maker. Planning, writing code and tests, reading and judging results, diagnosing failures, and writing any text that goes out (commit messages, PR bodies, comments, messages) are yours and are never delegated.",
+      "{ops} is for narrow fetch-and-run work only: running exact commands, gathering data, copying or moving named files, and posting text you've already written, word for word. Use it only when that work can be fully specified up front and needs no choice along the way.",
+      "Delegate only when it's cheaper. A subagent starts cold: its own system prompt and tools, your brief, then its report all cost tokens before it does anything. That only pays off when the work would otherwise pull a lot of raw output into your context (long build or test logs, CI logs, wide searches, big files or pages) and you only need a short result from it. A few commands, a copy, a commit, a push or a single gh call costs more to delegate than to do; do those yourself. A step marked ({ops}) below is only offered to it: if it fails this test, do it yourself.",
+      "Delegate only where {ops} does it exactly as well as you would. If doing it well needs judgment (which files matter, what an error means, what to summarize), do it yourself. Never let it summarize anything you need to read in full yourself, such as a diff under review or a file you're about to change.",
+      "Bundle the mechanical work of a step into one brief instead of one agent per command, and continue the same {ops} with SendMessage for later steps while it's still around.",
+      "Brief {ops} with the exact commands, paths and text, and say exactly what to return: exit codes, pass / fail counts, URLs, and failing test names and error lines verbatim. Point it at files rather than pasting their contents.",
+      "Where a step assigned to {ops} says to fix something, {ops} only reports it; you diagnose and fix. If its report looks wrong or incomplete, redo the work yourself rather than re-delegating. A report counts as verified only after you've checked its paths and claims, and only after its final message.",
+      "If {ops} can't do something, or comes back blocked or unsure, take the work over and finish it yourself. Never pass it to me instead: the only steps that are mine are the ones marked [ME] or that I've said I'll do myself."
     ],
     "architect": [
       "You coordinate and do the mechanical work: commands, builds and test runs, git / gh, and posting. {architect} does the judgment work, at the steps assigned to it only.",
@@ -77,6 +81,7 @@
       "Save long material (issue text, logs, command output) to files and hand {architect} the paths, not pasted content. Don't re-send what it has already read.",
       "Never write or change the code yourself, decide what the request means, or invent test scenarios. If you're unsure whether something is judgment work, it is: send it to {architect}.",
       "When a build, test or CI check fails, or one of your steps says to fix something, send {architect} the exact error. Don't change the code, the tests or the expected results to make it pass.",
+      "If you can't do something yourself (a step is beyond you, a tool or command defeats you, or you're stuck), hand it to {architect} with what you tried and the exact error, and let it do the work. Never pass it to me instead: the only steps that are mine are the ones marked [ME] or that I've said I'll do myself.",
       "Relay {architect}'s questions and conclusions to me verbatim."
     ]
   },
@@ -235,13 +240,13 @@
                        "text": "Check every acceptance criterion and test scenario: pass / fail with evidence (test name, command output, or the steps you ran). Send failures back to the coder and re-test after the fix." },
     "docs":          { "title": "Docs", "role": "coder",
                        "text": "Update README, CHANGELOG and comments only where behavior or usage changed." },
-    "commit":        { "title": "Commit", "role": "coder", "work": "mechanical", "cap": "git_local",
+    "commit":        { "title": "Commit", "role": "coder", "work": "trivial", "cap": "git_local",
                        "text": "Stage files by name (never `git add -A` or `git add .`) and check `git status` and the staged diff for secrets, databases, local config and build output before each commit. Commit in small, logical commits with Conventional Commit messages (`{commit_type}: <summary>`).{issue_note} Don't commit on {base_branch} unless this prompt says to, and never amend or rebase commits that are already pushed.",
                        "manual": "I'll commit. Give me the list of changed files and a commit message (`{commit_type}: <summary>`)." },
     "push":          { "title": "Push", "role": "lead", "work": "trivial", "cap": "git_push",
                        "text": "`git push -u origin {branch}`.",
                        "manual": "I'll push `{branch}` myself. Tell me when it's ready." },
-    "create_pr":     { "title": "Open PR", "role": "lead", "work": "mechanical", "cap": "gh_pr",
+    "create_pr":     { "title": "Open PR", "role": "lead", "work": "trivial", "cap": "gh_pr",
                        "text": "Open a PR with `gh pr create --base {base_branch} --head {branch}`. Title: `{commit_type}: <summary>`. Body: ## Summary, ## Changes, ## Testing (commands and results), ## Acceptance criteria (if the request has any: a checklist, ticked only when verified).{closes_note} Give me the link.",
                        "manual": "Give me the compare link ({compare_link}), a PR title and a markdown body (## Summary, ## Changes, ## Testing, ## Acceptance criteria if any).{closes_note} I'll open it and send you the link. Wait for it." },
     "ci_check":      { "title": "Check CI", "role": "lead", "work": "mechanical", "cap": "gh_actions",
@@ -274,7 +279,7 @@
         { "use": "plan", "title": "Architecture",
           "text": "Propose the structure: modules, key types, data flow, and dependencies with versions. Keep it as simple as the requirements allow. Map each acceptance criterion to where it's implemented and how it's tested." },
         "implement", "tests", "build", "review", "qa", "docs", "commit",
-        { "id": "create_repo", "title": "Create GitHub repo", "role": "lead", "work": "mechanical", "cap": "gh_repo",
+        { "id": "create_repo", "title": "Create GitHub repo", "role": "lead", "work": "trivial", "cap": "gh_repo",
           "text": "Create the GitHub repo and push: `gh repo create {github_repo} --{visibility} --source \"{repo_path}\" --push`.",
           "manual": "I'll create the GitHub repo myself. Give me the settings to use, then wait." },
         { "id": "ci_setup", "title": "Set up CI", "role": "coder", "cap": "gh_actions", "default_mode": "Skip",
@@ -401,7 +406,7 @@
           "text": "Run every scenario and record pass / fail with evidence." },
         { "id": "signoff", "title": "QA verdict", "role": "qa",
           "text": "Give the verdict: pass / pass with issues / fail. List failing criteria and every bug found (title, repro steps, severity)." },
-        { "id": "save_plan", "title": "Save the plan in the repo", "role": "qa", "work": "mechanical", "cap": "git_local", "default_mode": "Skip",
+        { "id": "save_plan", "title": "Save the plan in the repo", "role": "qa", "work": "trivial", "cap": "git_local", "default_mode": "Skip",
           "text": "Save the test plan and results as docs/test-plans/<date>-<title>.md and commit it." },
         { "use": "post_review", "title": "Post verdict on the PR", "default_mode": "Skip",
           "text": "Post the QA verdict and the test-plan table as a comment on PR {pr} (`gh pr comment {pr} --body-file <file>`)." }
@@ -448,7 +453,7 @@
       "fields": ["title", "start_model", "pr", "review_depth", "acceptance", "focus", "handoff_notes"],
       "rules": ["Don't push commits to the PR branch unless I ask; review only."],
       "steps": [
-        { "id": "fetch", "title": "Read the PR", "role": "lead", "work": "mechanical", "cap": "gh_review",
+        { "id": "fetch", "title": "Read the PR", "role": "lead", "work": "trivial", "cap": "gh_review",
           "text": "Run `gh pr view {pr}` and `gh pr diff {pr}`, and read the description and any linked issue. If you need to run it, `gh pr checkout {pr}` (note the branch you were on first).",
           "manual": "I'll give you the diff. Wait for me to paste it." },
         { "use": "build", "title": "Build + test the PR", "text": "On the PR branch, run `{build_cmd}`, `{lint_cmd}` and `{test_cmd}`. Report failures; don't fix them." },
@@ -512,12 +517,12 @@
           "text": "Use the version given in Context if there is one; otherwise work it out from the commits since the last tag (`git describe --tags --abbrev=0`) and tell me." },
         { "id": "changelog", "title": "Changelog", "role": "lead",
           "text": "Update CHANGELOG.md from the commits since the last tag (Added / Changed / Fixed / Removed)." },
-        { "id": "bump", "title": "Bump version", "role": "coder", "work": "mechanical",
+        { "id": "bump", "title": "Bump version", "role": "coder", "work": "trivial",
           "text": "Bump the version in the project files." },
         "build",
         { "use": "tests", "work": "mechanical", "text": "Run `{test_cmd}` and report pass / fail counts. Don't add tests or features in a release; if something fails, stop and tell me." },
         "commit", "push", "create_pr",
-        { "id": "tag", "title": "Tag + GitHub release", "role": "lead", "work": "mechanical", "cap": "gh_pr",
+        { "id": "tag", "title": "Tag + GitHub release", "role": "lead", "work": "trivial", "cap": "gh_pr",
           "text": "Wait until I tell you the PR is merged. Then tag `v<version>` on {base_branch}, push the tag, and run `gh release create v<version>` with the changelog section as the notes. Attach build artifacts if the project produces them.",
           "manual": "I'll tag and publish the release. Give me the commands and the release notes." }
       ]
@@ -623,7 +628,7 @@
           "text": "List any problems you see with what I asked (layout clashes, things that should stay against a wall, decor that would block a walkway or cover a screen), then a short plan: what goes where, which files change, and how you'll check it. Wait for my OK before changing code, unless the change size is Small." },
         { "use": "implement",
           "text": "Make the change in src/index.html (and src/server.py / src/office.py together if the API or roster changes), following the surrounding drawing code and naming. Keep the diff to this request." },
-        { "use": "build",
+        { "use": "build", "work": "trivial",
           "text": "Run `py -m py_compile src/app.py src/server.py src/office.py src/install_hooks.py src/claude_hook.py tools/make_icon.py`. Fix errors your change introduced; list pre-existing ones without fixing them." },
         { "id": "office_qa", "title": "Check it in the browser", "role": "qa", "cap": "run_code",
           "text": "Start `py src/server.py 8790` and open http://127.0.0.1:8790/. Switch through every theme (not just the one you changed), check the console for errors, and zoom in on what changed. Send a few test tasks (or `set CLAUDE_OFFICE_PORT=8790` then `py src/office.py demo`) so workers walk around, and check they reach every station, seat and break-room spot without walking through furniture or walls, including the wheelchair and crutch users. Check each acceptance criterion and test scenario.{test_plan_note} Afterwards stop the server and reset the browser viewport.",
