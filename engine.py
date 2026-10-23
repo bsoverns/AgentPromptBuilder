@@ -60,7 +60,7 @@ PROJECT_CONTEXT = [
     ("Run", "run_cmd", True),
 ]
 
-SOLO = [{"name": "Claude", "role": "lead"}]
+SOLO = [{"name": "Neo", "role": "lead"}]
 
 WORK_KINDS = ("trivial", "mechanical")
 ROUTING_ROLES = ("ops", "architect")
