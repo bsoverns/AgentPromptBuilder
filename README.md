@@ -30,12 +30,12 @@ Only the Python standard library is needed (tkinter and sqlite3 ship with the Wi
 
 ## Saving tokens: model routing
 
-Every step in `templates.json` is one of three kinds of work: **trivial** (two or three commands, such as branching or pushing), **mechanical** (build and test runs, commit, PR, CI checks, fetching a PR), or **judgment** (everything else, the default). Two roles route steps by that kind:
+Every step in `templates.json` is one of three kinds of work: **trivial** (a few commands, such as branching, committing, pushing, opening a PR or reading a PR), **mechanical** (build and test runs and CI checks, where the output is long and only a short result is needed), or **judgment** (everything else, the default). Two roles route steps by that kind:
 
 | Preset | Team | Who does what |
 |---|---|---|
-| **Cost saver - Opus lead** | Atlas lead `opus`, Hawk reviewer `sonnet`, Runner ops `sonnet` | Atlas does the judgment and trivial steps itself. Mechanical steps go to Runner. Runner reports failures, and Atlas fixes them. |
-| **Cost saver - Sonnet lead** | Atlas lead `sonnet`, Sage architect `opus`, Hawk reviewer `sonnet` | Atlas coordinates and does the trivial and mechanical steps. Judgment steps that would land on the lead or on a missing coder go to Sage, which stays alive between steps (SendMessage) so it doesn't re-read everything. |
+| **Cost saver - Opus lead** | Morpheus lead `opus`, Trinity reviewer `opus`, Tank ops `sonnet` | Morpheus makes every decision and does the judgment and trivial steps itself. Mechanical steps are offered to Tank, which only runs exact commands, gathers data, copies files and posts text Morpheus wrote; Morpheus keeps the step whenever delegating wouldn't save tokens. Tank reports failures, and Morpheus fixes them; anything Tank can't do goes back to Morpheus, never to you. |
+| **Cost saver - Sonnet lead** | Morpheus lead `sonnet`, Oracle architect `opus`, Trinity reviewer `opus` | Morpheus coordinates and does the trivial and mechanical steps. Judgment steps that would land on the lead or on a missing coder go to Oracle, which stays alive between steps (SendMessage) so it doesn't re-read everything. Anything Morpheus can't do goes to Oracle, never to you. |
 
 ### Starting model
 

@@ -55,13 +55,13 @@
   },
 
   "team_presets": {
-    "Solo":             [ { "name": "Claude", "role": "lead" } ],
-    "Coder + Reviewer": [ { "name": "Atlas", "role": "lead" }, { "name": "Forge", "role": "coder" }, { "name": "Hawk", "role": "reviewer" } ],
-    "Full team":        [ { "name": "Atlas", "role": "lead" }, { "name": "Forge", "role": "coder" }, { "name": "Hawk", "role": "reviewer" }, { "name": "Probe", "role": "qa" } ],
-    "Bug hunt":         [ { "name": "Atlas", "role": "lead" }, { "name": "Hawk", "role": "reviewer" }, { "name": "Owl", "role": "reviewer" }, { "name": "Probe", "role": "qa" }, { "name": "Forge", "role": "coder" } ],
-    "Review pair":      [ { "name": "Atlas", "role": "lead" }, { "name": "Hawk", "role": "reviewer" }, { "name": "Owl", "role": "reviewer" } ],
-    "Cost saver - Opus lead":   [ { "name": "Atlas", "role": "lead", "model": "opus" }, { "name": "Hawk", "role": "reviewer", "model": "opus" }, { "name": "Runner", "role": "ops", "model": "sonnet" } ],
-    "Cost saver - Sonnet lead": [ { "name": "Atlas", "role": "lead", "model": "sonnet" }, { "name": "Sage", "role": "architect", "model": "opus" }, { "name": "Hawk", "role": "reviewer", "model": "opus" } ]
+    "Solo":             [ { "name": "Neo", "role": "lead" } ],
+    "Coder + Reviewer": [ { "name": "Morpheus", "role": "lead" }, { "name": "Neo", "role": "coder" }, { "name": "Trinity", "role": "reviewer" } ],
+    "Full team":        [ { "name": "Morpheus", "role": "lead" }, { "name": "Neo", "role": "coder" }, { "name": "Trinity", "role": "reviewer" }, { "name": "Mouse", "role": "qa" } ],
+    "Bug hunt":         [ { "name": "Morpheus", "role": "lead" }, { "name": "Trinity", "role": "reviewer" }, { "name": "Niobe", "role": "reviewer" }, { "name": "Mouse", "role": "qa" }, { "name": "Neo", "role": "coder" } ],
+    "Review pair":      [ { "name": "Morpheus", "role": "lead" }, { "name": "Trinity", "role": "reviewer" }, { "name": "Niobe", "role": "reviewer" } ],
+    "Cost saver - Opus lead":   [ { "name": "Morpheus", "role": "lead", "model": "opus" }, { "name": "Trinity", "role": "reviewer", "model": "opus" }, { "name": "Tank", "role": "ops", "model": "sonnet" } ],
+    "Cost saver - Sonnet lead": [ { "name": "Morpheus", "role": "lead", "model": "sonnet" }, { "name": "Oracle", "role": "architect", "model": "opus" }, { "name": "Trinity", "role": "reviewer", "model": "opus" } ]
   },
 
   "delegation": {
