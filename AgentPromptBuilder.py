@@ -222,7 +222,7 @@ class ProjectDialog(Dialog):
     """Create or edit a project profile. result = ("saved", id) or ("deleted", id)."""
 
     def __init__(self, app, project=None):
-        super().__init__(app, "Edit project" if project else "New project", "820x600")
+        super().__init__(app, "Edit project" if project else "New project", "820x700")
         self.project = project
         data = app.data
         specs = list(data["project_fields"].items())

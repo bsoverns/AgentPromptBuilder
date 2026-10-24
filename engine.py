@@ -25,6 +25,12 @@ Cost routing: a step's "work" is "trivial", "mechanical" or absent (judgment).
 With an "ops" agent on the team, mechanical steps go to it. With an "architect"
 agent, judgment steps that would land on the lead go to it instead, so a cheap
 lead model can coordinate while an expensive one does the thinking.
+
+Run mode: a project whose "run_mode" starts with "Unattended" sets the value
+"unattended". Steps and rules (a rule may be a dict with "text") can then use
+"when" / "unless" to switch on or off by any value, and an "unattended" key
+holding the text to use instead, so one template serves both a prompt that
+stops for me and one that runs a ticket from start to merge.
 """
 
 import re
@@ -107,6 +113,22 @@ def render(text: str, values: dict, missing: set | None = None) -> str:
     return PLACEHOLDER.sub(sub, text)
 
 
+def is_active(item: dict, values: dict) -> bool:
+    """A step or rule's "when" / "unless" name values that switch it on or off."""
+    if item.get("when") and not values.get(item["when"]):
+        return False
+    return not (item.get("unless") and values.get(item["unless"]))
+
+
+def pick_text(item: dict | str, values: dict) -> str:
+    """A step's or rule's text, or its "unattended" text in an unattended run."""
+    if isinstance(item, str):
+        return item
+    if values.get("unattended") and item.get("unattended"):
+        return item["unattended"]
+    return item.get("text", "")
+
+
 def clean_team(team: list[dict] | None) -> list[dict]:
     out = [
         {
@@ -138,6 +160,13 @@ def validate(data: dict) -> list[str]:
     for sid, step in library.items():
         if step.get("work") and step["work"] not in WORK_KINDS:
             errors.append(f"step_library: '{sid}' has unknown work '{step['work']}'")
+    rule_lists = [("global_rules", data.get("global_rules", []))]
+    rule_lists += [(t.get("id", "?"), t.get("rules", [])) for t in data.get("templates", [])]
+    rule_lists += [(f"fields.{key}", spec.get("rules", {}).values()) for key, spec in fields.items()]
+    for where, rules in rule_lists:
+        for rule in rules:
+            if not isinstance(rule, str) and not (isinstance(rule, dict) and rule.get("text")):
+                errors.append(f"{where}: a rule must be text or a dict with 'text'")
     for name, start in data.get("start_models", {}).items():
         if start.get("preset") and start["preset"] not in presets:
             errors.append(f"start_models: '{name}' has unknown preset '{start['preset']}'")
@@ -251,6 +280,7 @@ def computed_values(
         spec = data.get("fields", {}).get(key, {})
         if key not in (raw_values or {}):
             v[key] = spec.get("default") or (spec.get("options") or [""])[0]
+    v["unattended"] = "yes" if v.get("run_mode", "").lower().startswith("unattended") else ""
     v["request_id"] = str(request_id or "")
     v["today"] = datetime.now().strftime("%Y-%m-%d")
     v["commit_type"] = template.get("commit_type", "feat")
@@ -271,7 +301,9 @@ def computed_values(
         " Cover every scenario under 'Test scenarios (from me)'." if v.get("test_plan") else ""
     )
 
-    if not v.get("branch") and template.get("branch_style") == "dated":
+    # The template or the project can ask for dated branches.
+    dated = template.get("branch_style") == "dated" or v.get("branch_style", "").lower().startswith("dated")
+    if not v.get("branch") and dated:
         # Repos whose rules want YYYY-MM-DD_Short_Description branches.
         words = title_words(v.get("title", ""))
         if words:
@@ -350,7 +382,8 @@ def build_prompt(
         for label, key, code in PROJECT_CONTEXT:
             if v.get(key) and key not in template_fields:
                 out += _field_lines(label, v[key], code)
-        notes = data.get("languages", {}).get(v.get("language", ""), {}).get("notes")
+        # A project's own conventions replace the language's generic ones.
+        notes = v.get("conventions") or data.get("languages", {}).get(v.get("language", ""), {}).get("notes")
         if notes and not terse:
             out.append(f"- {v['language']} conventions: {notes}")
     for key in template_fields:
@@ -410,7 +443,7 @@ def build_prompt(
             out.append("")
 
     # Steps
-    steps = [s for s in resolve_steps(data, template) if not s.get("when") or v.get(s["when"])]
+    steps = [s for s in resolve_steps(data, template) if is_active(s, v)]
     own = resolve_owners(steps, owners, team, caps, target)
 
     done = [s for s in steps if own[s["id"]] == MODE_DONE]
@@ -437,7 +470,7 @@ def build_prompt(
                 out.append(f"{n}. **{s['title']}** [ME]: {render(text, v, missing)}")
             else:
                 who = f" ({owner})" if multi else ""
-                out.append(f"{n}. **{s['title']}**{who}: {render(s['text'], v, missing)}")
+                out.append(f"{n}. **{s['title']}**{who}: {render(pick_text(s, v), v, missing)}")
         if manual:
             out += [
                 "",
@@ -452,7 +485,7 @@ def build_prompt(
         extra = fields.get(key, {}).get("rules", {}).get(v.get(key, ""))
         if extra:
             rules.append(extra)
-    rules = [render(r, v, missing) for r in rules]
+    rules = [render(pick_text(r, v), v, missing) for r in rules if isinstance(r, str) or is_active(r, v)]
     # The user's own project rules go in verbatim: braces in them aren't placeholders.
     rules += [
         line.strip().lstrip("-*").strip() for line in v.get("project_rules", "").splitlines() if line.strip()
@@ -491,6 +524,16 @@ def problems(
         out.append("No project selected")
     if not v.get("title"):
         out.append("No title")
+    # Choice fields always hold a value, and these only name or route the work.
+    fields = data.get("fields", {})
+    details = [
+        k
+        for k in template.get("fields", [])
+        if k not in ("title", "branch", "issue", HANDOFF_KEY) and fields.get(k, {}).get("type") != "choice"
+    ]
+    if details and not any(v.get(k) for k in details + [HANDOFF_KEY]):
+        first = next((k for k in details if fields.get(k, {}).get("section")), details[0])
+        out.append(f"Nothing says what to do (fill in '{fields.get(first, {}).get('label', first)}')")
     names = [(a.get("name") or "").strip() for a in team or []]
     if any(not n for n in names) or len(set(names)) != len(names):
         out.append("Agent names must be filled in and unique")
@@ -501,6 +544,10 @@ def problems(
     git_active = any(
         own.get(sid) not in (MODE_DONE, MODE_SKIP, None) for sid in ("sync_base", "create_branch")
     )
+    if v.get("unattended"):
+        mine = [s["title"] for s in steps if is_active(s, v) and own[s["id"]] == MODE_ME]
+        if mine:
+            out.append("Unattended run, but these steps are [ME] and will stop it: " + ", ".join(mine))
     if git_active and re.search(r"\b(branch(ed)?|pulled)\b", v.get(HANDOFF_KEY, ""), re.I):
         out.append(
             "Hand-off notes mention the branch, but the git setup steps are still assigned "

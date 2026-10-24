@@ -132,6 +132,11 @@
     "lint_cmd":        { "label": "Lint / format command", "type": "entry", "hint": "Blank = language default" },
     "run_cmd":         { "label": "Run command", "type": "entry", "hint": "How to start the app" },
     "rules_file":      { "label": "Agent rules file", "type": "entry", "default": "CLAUDE.md", "hint": "CLAUDE.md or AGENTS.md in the repo" },
+    "conventions":     { "label": "Conventions", "type": "entry", "hint": "Blank = the language's defaults (e.g. venv, pinned requirements)" },
+    "branch_style":    { "label": "Branch names", "type": "choice", "options": ["Task type default", "Dated (YYYY-MM-DD_Title)"], "default": "Task type default",
+                         "hint": "Task type default = <prefix>/<request id>-<title>" },
+    "run_mode":        { "label": "Run mode", "type": "choice", "options": ["Stop for me", "Unattended (start to merge)"], "default": "Stop for me",
+                         "hint": "Unattended: no waiting for answers; the agent squash-merges its own PR and pulls the base branch" },
     "project_rules":   { "label": "Project rules (one per line)", "type": "text", "hint": "Added to the Rules of every prompt for this project" }
   },
 
@@ -144,7 +149,8 @@
     "change_size":      { "label": "Change size", "type": "choice", "options": ["Small", "Normal", "Large"], "default": "Normal",
                           "rules": {
                             "Small": "Small change: keep the process in proportion. At most one round of questions, a short plan, tests for what changed, docs only where touched, short updates.",
-                            "Large": "Large change: write the plan first and wait for my OK before writing code. Commit in reviewable steps."
+                            "Large": { "text": "Large change: write the plan first and wait for my OK before writing code. Commit in reviewable steps.",
+                                       "unattended": "Large change: write the plan first, then follow it. Commit in reviewable steps." }
                           } },
     "guidance":         { "label": "What needs to happen", "type": "text", "section": "What needs to happen" },
     "requirements":     { "label": "Requirements (one per line)", "type": "text", "section": "Requirements" },
@@ -203,12 +209,14 @@
 
   "global_rules": [
     "Work only inside {repo_path} and the paths named in this prompt.",
-    "If something you need is missing, ask me everything in ONE message before writing code, each question with your recommended answer.",
+    { "text": "If something you need is missing, ask me everything in ONE message before writing code, each question with your recommended answer.",
+      "unattended": "This is an unattended run: nobody is watching, so never wait for an answer. Decide as the 'Ask questions' step says and record each assumption in the PR body." },
     "Follow {rules_file} and the project's existing patterns. Don't over-engineer and don't refactor code this request doesn't need.",
     "Don't say something works until you've tested it. Only report facts you've verified (test results, counts, links).",
-    "If a step fails, stop and tell me which step and the exact error.",
-    "Never print, hardcode or commit secrets; read them from environment variables and keep them out of git.",
-    "Never force-push, rewrite history on {base_branch}, or merge a PR unless I say so.",
+    "If a step fails and you can't fix it within this request, stop and tell me which step and the exact error.",
+    "Never print, hardcode or commit secrets; read them from environment variables (or wherever {rules_file} says they live) and keep them out of git.",
+    { "text": "Never force-push, rewrite history on {base_branch}, or merge a PR unless I say so.",
+      "unattended": "Never force-push or rewrite history on {base_branch}. The only merge allowed is the squash merge of this prompt's own PR in the Merge step." },
     "Preserve existing line endings and file encoding.",
     "If the same fix fails twice, stop and tell me what you tried instead of trying a third approach."
   ],
@@ -217,7 +225,8 @@
     "orient":        { "title": "Get oriented", "role": "lead",
                        "text": "In {repo_path}, read {rules_file} and README.md if they exist, then the code this request touches. Summarize the current state in 3-5 lines." },
     "questions":     { "title": "Ask questions", "role": "lead",
-                       "text": "If anything you need is missing or unclear, ask me everything in ONE message, each question with your recommended answer so I can just reply 'yes'. Wait for my answers before writing code." },
+                       "text": "If anything you need is missing or unclear, ask me everything in ONE message, each question with your recommended answer so I can just reply 'yes'. Wait for my answers before writing code.",
+                       "unattended": "Don't stop to ask. Where something is unclear, pick the safest reasonable option that's easy to undo, list it under ## Assumptions in the PR body, and carry on. Stop and tell me why only if the request is empty or contradicts itself, the only way forward needs real data, production, a secret or a destructive action, or a rule in this prompt or {rules_file} forbids it." },
     "sync_base":     { "title": "Update base branch", "role": "lead", "work": "trivial", "cap": "git_local",
                        "text": "Make sure the working tree is clean (if it isn't, stop and tell me). Then `git checkout {base_branch}` and `git pull` (skip the pull if there's no remote yet).",
                        "manual": "I'll bring {base_branch} up to date myself. Don't pull or switch branches." },
@@ -241,16 +250,19 @@
     "docs":          { "title": "Docs", "role": "coder",
                        "text": "Update README, CHANGELOG and comments only where behavior or usage changed." },
     "commit":        { "title": "Commit", "role": "coder", "work": "trivial", "cap": "git_local",
-                       "text": "Stage files by name (never `git add -A` or `git add .`) and check `git status` and the staged diff for secrets, databases, local config and build output before each commit. Commit in small, logical commits with Conventional Commit messages (`{commit_type}: <summary>`).{issue_note} Don't commit on {base_branch} unless this prompt says to, and never amend or rebase commits that are already pushed.",
-                       "manual": "I'll commit. Give me the list of changed files and a commit message (`{commit_type}: <summary>`)." },
+                       "text": "Stage files by name (never `git add -A` or `git add .`) and check `git status` and the staged diff for secrets, databases, local config and build output before each commit. Commit in small, logical commits. Use {rules_file}'s commit message format if it has one, otherwise Conventional Commits (`{commit_type}: <summary>`).{issue_note} Don't commit on {base_branch} unless this prompt says to, and never amend or rebase commits that are already pushed.",
+                       "manual": "I'll commit. Give me the list of changed files and a commit message ({rules_file}'s format if it has one, otherwise `{commit_type}: <summary>`)." },
     "push":          { "title": "Push", "role": "lead", "work": "trivial", "cap": "git_push",
                        "text": "`git push -u origin {branch}`.",
                        "manual": "I'll push `{branch}` myself. Tell me when it's ready." },
     "create_pr":     { "title": "Open PR", "role": "lead", "work": "trivial", "cap": "gh_pr",
-                       "text": "Open a PR with `gh pr create --base {base_branch} --head {branch}`. Title: `{commit_type}: <summary>`. Body: ## Summary, ## Changes, ## Testing (commands and results), ## Acceptance criteria (if the request has any: a checklist, ticked only when verified).{closes_note} Give me the link.",
+                       "text": "Open a PR with `gh pr create --base {base_branch} --head {branch}`, titled and laid out the way {rules_file} says if it does. Otherwise title it `{commit_type}: <summary>` with a body of ## Summary, ## Changes, ## Testing (commands and results; leave unticked anything you didn't actually try), ## Acceptance criteria (if the request has any: a checklist, ticked only when verified) and ## Assumptions (if you made any).{closes_note} Give me the link.",
                        "manual": "Give me the compare link ({compare_link}), a PR title and a markdown body (## Summary, ## Changes, ## Testing, ## Acceptance criteria if any).{closes_note} I'll open it and send you the link. Wait for it." },
     "ci_check":      { "title": "Check CI", "role": "lead", "work": "mechanical", "cap": "gh_actions",
                        "text": "If the repo has GitHub Actions, wait for the PR checks (`gh pr checks --watch`). If one fails, read the log (`gh run view --log-failed`). Fix only failures this change caused; if the same check also fails on {base_branch}, report it instead. Push the fix and check again, at most twice; if it still fails, stop and give me the check name and the relevant log lines." },
+    "merge":         { "title": "Merge", "role": "lead", "work": "trivial", "cap": "gh_pr", "when": "unattended",
+                       "text": "Squash-merge this prompt's own PR once checks pass (or the repo has none), the review has no open blockers and everything the request asked for is done: `gh pr merge <number> --squash --subject \"<PR title> (#<number>)\" --body \"<one bullet per user-visible change>\"`, without --admin, --auto or --delete-branch. Then `git checkout {base_branch}`, `git pull`, and check the squash commit is on {base_branch}. If `git log origin/{branch}..{branch}` is empty, delete the local branch with `git branch -D {branch}`; leave the remote branch alone. If GitHub refuses the merge (conflicts, failing checks, protection), don't force it: stop and give me the PR link and the reason.",
+                       "manual": "I'll merge the PR myself. Give me the link and wait." },
     "post_review":   { "title": "Post review on GitHub", "role": "reviewer", "cap": "gh_review",
                        "text": "Post the review on PR {pr} as ONE review with event COMMENT (not APPROVE or REQUEST_CHANGES): inline comments for line-specific findings and a summary body with the verdict. Use `gh api repos/{github_repo}/pulls/<number>/reviews` with a JSON body of event, body and comments (path, line, side, body).{reviewer_note}",
                        "manual": "Don't post anything. Give me the review as markdown (verdict first, then findings with file:line) for me to paste." },
@@ -295,7 +307,7 @@
       "branch_prefix": "feature", "commit_type": "feat", "team": "Full team",
       "fields": ["title", "start_model", "issue", "branch", "change_size", "guidance", "requirements", "acceptance", "test_plan", "files", "reference", "out_of_scope", "handoff_notes"],
       "rules": [],
-      "steps": ["orient", "questions", "sync_base", "create_branch", "plan", "implement", "tests", "build", "review", "qa", "docs", "commit", "push", "create_pr", "ci_check"]
+      "steps": ["orient", "questions", "sync_base", "create_branch", "plan", "implement", "tests", "build", "review", "qa", "docs", "commit", "push", "create_pr", "ci_check", "merge"]
     },
 
     {
@@ -311,7 +323,7 @@
           "text": "List every caller, setting, saved-data format and doc that depends on the current behavior. This is what the change can break." },
         "questions", "sync_base", "create_branch", "plan",
         { "use": "implement", "text": "Change the behavior from current to new. Update tests that encoded the old behavior and say which ones changed and why." },
-        "tests", "build", "review", "qa", "docs", "commit", "push", "create_pr", "ci_check"
+        "tests", "build", "review", "qa", "docs", "commit", "push", "create_pr", "ci_check", "merge"
       ]
     },
 
@@ -338,7 +350,7 @@
         { "id": "deprecate", "title": "Deprecate old", "role": "coder",
           "text": "Mark the old feature deprecated the way {language} allows (attribute, annotation, doc comment or a one-time log warning) with a pointer to the new one. Don't remove it." },
         { "use": "docs", "text": "Document how to switch, how to roll back, and the removal plan (mine if it's given above, otherwise propose one)." },
-        "tests", "build", "review", "qa", "commit", "push", "create_pr", "ci_check"
+        "tests", "build", "review", "qa", "commit", "push", "create_pr", "ci_check", "merge"
       ]
     },
 
@@ -359,7 +371,7 @@
         { "use": "tests", "text": "Confirm the failing test now passes, add tests for any other places with the same mistake, then run `{test_cmd}` and report pass / fail counts." },
         "build", "review",
         { "use": "qa", "text": "Run the steps to reproduce and the regression test, and confirm the result now matches 'Expected vs actual': pass / fail with evidence. Send failures back to the coder and re-test after the fix." },
-        "commit", "push", "create_pr", "ci_check"
+        "commit", "push", "create_pr", "ci_check", "merge"
       ]
     },
 
@@ -441,7 +453,7 @@
         { "use": "commit", "text": "Commit one package or group per commit (`chore(deps): bump <package> <old> -> <new>`).{issue_note}" },
         "push",
         { "use": "create_pr", "text": "Open a PR with `gh pr create --base {base_branch} --head {branch}`. Title: `chore(deps): <summary>`. Body: the package table, breaking changes handled, code changes, and test results against the baseline.{closes_note} Give me the link." },
-        "ci_check"
+        "ci_check", "merge"
       ]
     },
 
@@ -482,7 +494,7 @@
         { "use": "tests", "text": "Add characterization tests for behavior in scope that the tests don't cover yet; don't change existing assertions. Run `{test_cmd}` and report pass / fail counts against the baseline." },
         "build",
         { "use": "review", "text": "Review the diff against {base_branch} and confirm behavior hasn't changed: same inputs give the same outputs, errors and side effects. List findings as blocker / should fix / nit with file:line." },
-        "commit", "push", "create_pr", "ci_check"
+        "commit", "push", "create_pr", "ci_check", "merge"
       ]
     },
 
@@ -567,8 +579,8 @@
     {
       "id": "taskmaskitator_change",
       "name": "Taskmaskitator - board change (server + page)",
-      "description": "Taskmaskitator only. Back up the databases -> plan -> change server.py and index.html together -> pytest (Azure stubbed) -> live check on a scratch copy (port 8802) -> review -> docs (CHANGELOG, README, AGENTS.md) -> commit, push and open the PR -> stop so I can restart, test and merge.",
-      "branch_prefix": "feature", "commit_type": "feat", "team": "Full team",
+      "description": "Taskmaskitator only. Pull main -> dated branch -> plan -> change server.py and index.html together -> pytest (Azure stubbed) -> live check on the repo's test data (port 8802) -> review, QA -> docs (CHANGELOG, README, AGENTS.md) -> commit, push, PR -> stop for my test, or (Unattended project) squash-merge and pull main.",
+      "branch_prefix": "feature", "branch_style": "dated", "commit_type": "feat", "team": "Full team",
       "fields": ["title", "start_model", "branch", "change_size", "guidance", "requirements", "acceptance", "test_plan", "files", "out_of_scope", "handoff_notes"],
       "rules": [
         "Workspace writes go under _write_lock in one transaction with one bump_rev, so open browsers pick them up on their next /api/rev poll. Never start a timer, close an interval or park another machine's ticket as a side effect.",
@@ -577,32 +589,32 @@
       ],
       "steps": [
         { "use": "orient",
-          "text": "In {repo_path}, read AGENTS.md, the top of CHANGELOG.md and the README sections this request touches, then the code it touches in code/server.py and code/index.html. Check `git status` and the branch. Read the progress log C:\\Sandbox\\_AgentProgress\\taskmaskitator\\<branch>_Progress.md if it exists and carry on from its next step. (<branch> = the branch name with any / replaced by -). Summarize the current state in 3-5 lines." },
+          "text": "In {repo_path}, read AGENTS.md, the top of CHANGELOG.md and the README sections this request touches, then the code it touches in code/server.py and code/index.html. Check `git status` and the branch. If C:\\Sandbox\\_AgentProgress\\taskmaskitator\\{branch}_Progress.md exists, read it and carry on from its next step. Summarize the current state in 3-5 lines." },
+        "questions",
         "sync_base",
         "create_branch",
         "plan",
-        { "id": "backup", "title": "Back up the databases", "role": "lead", "cap": "run_code",
-          "text": "Before running anything against data, back up databases/auth.db and databases/workspaces/*.db with the SQLite backup API from a read-only source (?mode=ro) to C:\\Sandbox\\_AgentProgress\\taskmaskitator\\backups\\<branch>\\ (<branch> = the branch name with any / replaced by -), run PRAGMA integrity_check on each copy, and report the result.",
-          "manual": "I'll back up databases/ myself. Tell me when you need it and wait." },
         { "use": "implement",
           "text": "Make the change in code/server.py and code/index.html together, following the surrounding patterns. Where the server now builds something the page also builds (e.g. a ticket's shape), say so in a comment in both places. Keep the diff to this request." },
         { "use": "tests",
-          "text": "Write a scenario table (input -> expected result) for each acceptance criterion and the edge cases.{test_plan_note} Add pytest tests in tests/ using the srv fixture in tests/conftest.py (real server, temp databases, Azure stubbed via _azure_request; nothing reaches the network or databases/). Run `{test_cmd}` and report pass / fail per scenario plus the total." },
-        { "use": "build", "text": "Run `{build_cmd}` (there is no linter). Fix errors your change introduced; list pre-existing ones without fixing them." },
-        { "id": "scratch_qa", "title": "Live check on a scratch copy", "role": "qa", "cap": "run_code",
-          "text": "Copy code/ and the backup from the previous step into a scratch folder outside the repo. In each scratch workspace DB set app_config 'report' enabled to false BEFORE starting it, so it can't email anyone. Run the copy with `{run_cmd}` from that folder. Sign in by minting a session or connect token directly in the scratch auth.db (never use my password), then exercise each acceptance criterion through the API and in the browser, and check the console and server log for errors and for any token or PAT. Anything that reads Azure must be read-only. Afterwards stop the server and delete the scratch folder and any token files: they hold real data and secrets.",
-          "manual": "I'll test it on my instance. Give me numbered steps, what success looks like, and what to paste back." },
+          "text": "Write a scenario table (input -> expected result) for each acceptance criterion and the edge cases.{test_plan_note} Add pytest tests in tests/ using the srv fixture in tests/conftest.py (real server, temp databases, Azure stubbed via _azure_request; nothing reaches the network or databases/). Run `{test_cmd}` (about 2 minutes: give it a 10-minute timeout or run it in the background) and report pass / fail per scenario plus the total." },
+        { "use": "build", "text": "Run `{build_cmd}` and `{lint_cmd}` (there is no linter beyond that). Fix errors your change introduced; list pre-existing ones without fixing them." },
+        { "id": "live_check", "title": "Live check on the test server", "role": "qa", "cap": "run_code",
+          "text": "From the repo, start `{run_cmd}` in the background (or the 'ttb' entry in .claude/launch.json): it uses the repo's own databases/, which is disposable test data. First make sure nothing else is on port 8802; never use 8765, my real board. Sign up a test account and make test tickets as needed; never enter real recipients, a real Gmail app password or an Azure PAT. Exercise each acceptance criterion through the API and in the browser, and check the console and server log for errors and for any token or PAT. Layout-only changes can be checked by opening code/index.html from disk instead (AGENTS.md 'Testing'). Stop the server when you're done. Only if the problem needs real data, follow AGENTS.md 'Testing' for a scratch copy of production and delete it afterwards.",
+          "manual": "I'll test it on the test server (port 8802). Give me numbered steps, what success looks like, and what to paste back." },
         "review",
         "qa",
         { "use": "docs",
-          "text": "Follow the Documentation rule in AGENTS.md: a CHANGELOG.md entry under the current branch's 'Unreleased' heading (date, server / client / both, what it does for me, new endpoints, in-place schema upgrades); update the README section the feature belongs to (new endpoints go in 'API for agents and scripts') and remove anything the change made untrue; update AGENTS.md if a command, rule or workflow changed." },
+          "text": "Follow the Documentation rule in AGENTS.md: a CHANGELOG.md entry under the heading \"## Unreleased — branch `{branch}`\" at the top (add it if it isn't there) with the date, server / client / both, what it does for me, new endpoints and in-place schema upgrades; update the README section the feature belongs to (new endpoints go in 'API for agents and scripts') and remove anything the change made untrue; update AGENTS.md if a command, rule or workflow changed." },
         { "id": "progress_log", "title": "Progress log", "role": "lead",
-          "text": "Append to the progress log C:\\Sandbox\\_AgentProgress\\taskmaskitator\\<branch>_Progress.md (create it if needed): date, backup path, what changed (files and functions), test counts, live-check results, anything found but not fixed, and the next step." },
+          "text": "Append to C:\\Sandbox\\_AgentProgress\\taskmaskitator\\{branch}_Progress.md (create it if needed): date, what changed (files and functions), test counts, live-check results, anything found but not fixed, and the next step." },
         "commit",
         "push",
         "create_pr",
-        { "id": "handoff", "title": "Stop for my test", "role": "lead",
-          "text": "Stop here. Tell me whether I need to restart the service (server.py changed) or only reload the page (index.html only), give me numbered test steps with what success looks like, and list anything found but not fixed with a recommendation. Give me the PR link; I merge it." }
+        "merge",
+        { "id": "handoff", "title": "Hand-off", "role": "lead",
+          "text": "Stop here. Tell me whether production needs deploy.bat and a restart (server.py changed) or deploy.bat and a page reload (index.html only), give me numbered test steps with what success looks like, and list anything found but not fixed with a recommendation. Give me the PR link; I merge it.",
+          "unattended": "Report: the PR link and merge commit, whether production needs deploy.bat and a restart (server.py changed) or deploy.bat and a page reload (index.html only), the assumptions you made, and anything found but not fixed with a recommendation. Don't run deploy.bat or touch production." }
       ]
     },
 

@@ -316,6 +316,72 @@ def test_validate_rejects_unknown_start_preset(data):
     assert engine.validate(data) == ["start_models: 'Opus 5.5' has unknown preset 'Ghost'"]
 
 
+# -- project run mode, branch style and conventions -------------------------------
+
+
+def _with_run_mode(data):
+    data["global_rules"].append({"text": "Ask me first.", "unattended": "Never wait for me."})
+    data["step_library"]["ask"] = {"title": "Ask", "role": "lead", "text": "Ask.", "unattended": "Decide."}
+    data["step_library"]["merge"] = {
+        "title": "Merge",
+        "role": "lead",
+        "when": "unattended",
+        "text": "Merge it.",
+    }
+    data["step_library"]["wait"] = {"title": "Wait", "role": "lead", "unless": "unattended", "text": "Wait."}
+    data["templates"][0]["steps"] += ["ask", "merge", "wait"]
+    return data
+
+
+def test_stop_for_me_keeps_the_usual_text(data, project):
+    out = build(_with_run_mode(data), dict(project, run_mode="Stop for me"), {"title": "X"})
+    assert "- Ask me first." in out and "**Ask** (Atlas): Ask." in out and "**Wait**" in out
+    assert "Merge" not in out and "Never wait" not in out
+
+
+def test_unattended_swaps_text_and_steps(data, project):
+    out = build(_with_run_mode(data), dict(project, run_mode="Unattended (start to merge)"), {"title": "X"})
+    assert "- Never wait for me." in out and "**Ask** (Atlas): Decide." in out
+    assert "**Merge** (Atlas): Merge it." in out
+    assert "**Wait**" not in out and "Ask me first" not in out
+
+
+def test_unattended_warns_about_manual_steps(data, project):
+    data = _with_run_mode(data)
+    p = dict(project, run_mode="Unattended (start to merge)")
+    issues = engine.problems(
+        data, data["templates"][0], p, {"title": "X"}, {"merge": MODE_ME}, TEAM, "claude_code", {}
+    )
+    assert any("Unattended run" in i and "Merge" in i for i in issues)
+
+
+def test_project_dated_branch_style(data, project):
+    p = dict(project, branch_style="Dated (YYYY-MM-DD_Title)")
+    v = engine.computed_values(data, data["templates"][0], p, {"title": "fix it"}, request_id=3)
+    assert v["branch"].endswith("_Fix_It") and "/" not in v["branch"]
+
+
+def test_project_conventions_replace_language_notes(data, project):
+    data["languages"]["Python"]["notes"] = "Use a venv."
+    assert "- Python conventions: Use a venv." in build(data, project, {"title": "X"})
+    out = build(data, dict(project, conventions="Stdlib only."), {"title": "X"})
+    assert "- Python conventions: Stdlib only." in out and "venv" not in out
+
+
+def test_problems_empty_request(data, project):
+    data["fields"]["guidance"] = {"label": "What needs to happen", "section": "What needs to happen"}
+    data["templates"][0]["fields"].append("guidance")
+    issues = engine.problems(data, data["templates"][0], project, {"title": "X"}, {}, TEAM, "claude_code", {})
+    assert "Nothing says what to do (fill in 'What needs to happen')" in issues
+    values = {"title": "X", "guidance": "Do it."}
+    assert engine.problems(data, data["templates"][0], project, values, {}, TEAM, "claude_code", {}) == []
+
+
+def test_validate_rejects_rule_without_text(data):
+    data["global_rules"].append({"unattended": "No base text."})
+    assert engine.validate(data) == ["global_rules: a rule must be text or a dict with 'text'"]
+
+
 # -- real templates.json -------------------------------------------------------
 
 
@@ -332,3 +398,13 @@ def test_real_templates_all_build(templates, project):
             assert text.startswith(f"# {template['name']}: Smoke (request #1)")
             assert "## Delegation" not in text
             assert "Small change" not in text
+
+
+def test_real_templates_unattended_never_waits(templates, project):
+    p = dict(project, run_mode="Unattended (start to merge)")
+    for template in templates["templates"]:
+        text = engine.build_prompt(templates, template, p, {"title": "Smoke"}, {}, None, "claude_code", {}, 1)
+        assert "ask me everything in ONE message before writing code" not in text
+        assert "merge a PR unless I say so" not in text
+        if "merge" in template["steps"]:
+            assert "**Merge**" in text and "gh pr merge" in text

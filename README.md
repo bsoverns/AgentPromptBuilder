@@ -18,7 +18,9 @@ Only the Python standard library is needed (tkinter and sqlite3 ship with the Wi
 
 | Piece | What it does |
 |---|---|
-| **Project** | A saved profile: repo folder, GitHub `owner/name`, base branch, main + other languages, framework, commands, rules file (`CLAUDE.md`), and project rules that go into every prompt. |
+| **Project** | A saved profile: repo folder, GitHub `owner/name`, base branch, main + other languages, framework, commands, rules file (`CLAUDE.md`), conventions (replace the language's generic ones), branch names, run mode, and project rules that go into every prompt. |
+| **Run mode** | Per project. **Stop for me** (the default): the agent asks its questions and waits, and leaves the merge to you. **Unattended (start to merge)**: for working a queue of tickets with nobody watching. The agent never waits for an answer (it records its assumptions in the PR body), and a **Merge** step squash-merges its own PR, pulls the base branch and deletes the local branch. It still stops for an empty or self-contradicting request, real data, production, secrets, destructive actions, or a fix that failed twice. The warning bar flags any step set to *Me (manual)*, since that would stop the run. |
+| **Branch names** | Per project. **Dated** names blank branches `YYYY-MM-DD_Title_Words` in every task type; otherwise each task type's own style applies. |
 | **Request** | One piece of work. The dropdown lists the project's requests (`#id title / task type / status`). **New request** starts a blank one, and the first **Save** or **Copy** creates the record. |
 | **Status** | Draft, Ready, In progress, Waiting on me, In review, QA, Done or Abandoned. Changing it updates the record immediately. |
 | **Task type** | What kind of work it is (see the table below). Switching task type keeps every value the new type also uses. |
@@ -26,7 +28,7 @@ Only the Python standard library is needed (tkinter and sqlite3 ship with the Wi
 | **Capabilities** | What the agent can do right now. A step tied to a capability that's switched off defaults to **Me (manual)**. |
 | **Agent team** | Named agents with a role (lead, coder, reviewer, QA, security, docs, ops, architect) and an optional model. Presets: Solo, Coder + Reviewer, Full team, Bug hunt, Review pair, and two cost savers (see [Saving tokens](#saving-tokens-model-routing)). With more than one agent, the prompt gets a Team table and each step names its agent. |
 | **Steps** | Each step goes to an agent, **Me (manual)**, **Already done** or **Skip**. Steps default to the agent whose role matches the step. **I already branched** marks the git setup steps done. |
-| **Warnings** | The red line lists anything that would make the agent guess: no project, no title, duplicate agent names, `{placeholders}` that are still empty, or hand-off notes that say you branched while the branch steps are still assigned. |
+| **Warnings** | The red line lists anything that would make the agent guess: no project, no title, nothing filled in to say what to do, duplicate agent names, `{placeholders}` that are still empty, hand-off notes that say you branched while the branch steps are still assigned, or *Me (manual)* steps in an unattended run. |
 
 ## Saving tokens: model routing
 
@@ -83,13 +85,14 @@ All data is in `prompts.db` (SQLite) beside the script. Back that file up. `conf
 | Release | version -> changelog -> bump -> PR -> tag + `gh release` after the merge |
 | CI / build setup | GitHub Actions build + lint + test workflow, suggested branch protection |
 | Pick up where I left off | check the current state -> do the next thing |
-| Taskmaskitator - board change (server + page) | For the Taskmaskitator repo only: back up the databases -> plan -> change `server.py` and `index.html` together -> pytest (Azure stubbed) -> live check on a scratch copy (port 8802, daily report off) -> review, QA -> docs (CHANGELOG, README, AGENTS.md) -> progress log -> commit, push, PR -> stop so I can restart, test and merge |
+| Taskmaskitator - board change (server + page) | For the Taskmaskitator repo only (dated branch): pull `main` -> plan -> change `server.py` and `index.html` together -> pytest (Azure stubbed) -> live check on the repo's own test data (port 8802, never the real board on 8765) -> review, QA -> docs (CHANGELOG, README, AGENTS.md) -> progress log -> commit, push, PR -> stop so I can test and merge, or with an Unattended project, squash-merge, pull `main` and report whether production needs `deploy.bat` |
 | Claude Office Workers - theme / feature / fix | For the ClaudeOfficeWorkers repo only (Cost saver - Opus lead team, `YYYY-MM-DD_Short_Description` branch): pick **Kind of change** (Theme, Feature or Bug fix) for its checklist -> pull `main`, branch -> list problems and plan, wait for my OK -> change `index.html` (and `server.py`) -> `py_compile` and every theme on test port 8790 (never the real office on 8777) -> review -> README / AGENTS.md -> stop `ClaudeOffice.exe`, rebuild and stop for my test -> after my OK: commit, push, PR |
 
 You can edit `templates.json` without touching the code:
 - **Steps** come from `step_library` and are reused by name (`"review"`), or overridden in place (`{"use": "review", "text": "..."}`).
 - **`fields`** with a `section` get their own heading in the prompt. Fields with `clear_on_copy` are cleared by Copy to project. `choice` fields can add a rule for the selected option.
-- A template's **`branch_style`** set to `"dated"` names a blank branch `YYYY-MM-DD_Title_Words` instead of `<prefix>/<request id>-<title>`.
+- A template's **`branch_style`** set to `"dated"` names a blank branch `YYYY-MM-DD_Title_Words` instead of `<prefix>/<request id>-<title>`. A project's **Branch names** set to Dated does the same for every task type.
+- Steps and rules (a rule can be a plain string or `{"text": ...}`) can carry **`when`** / **`unless`** (shown only when that value is set / not set; an Unattended project sets `unattended`) and an **`unattended`** text that replaces `text` in an unattended run. The `merge` step is `"when": "unattended"`, so it only appears for Unattended projects.
 - **`languages`** hold the default build / test / lint / outdated commands and conventions.
 - **`roles`**, **`team_presets`**, **`targets`**, **`capabilities`** and **`global_rules`** are all plain JSON.
 - A step's **`work`** (`"trivial"` or `"mechanical"`; blank means judgment) drives the cost routing. **`delegation`** holds the Delegation section's text for the `ops` and `architect` roles (`{ops}` and `{architect}` become the agents' names).
