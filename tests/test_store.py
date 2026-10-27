@@ -72,3 +72,24 @@ def test_list_versions_oldest_first(store, rid):
 
 def test_latest_version_none_without_versions(store, rid):
     assert store.latest_version(rid) is None
+
+
+def test_count_versions(store, rid):
+    assert store.count_versions(rid) == 0
+    for n in range(3):
+        store.add_version(rid, {"n": n}, f"p{n}")
+    assert store.count_versions(rid) == 3
+    assert store.count_versions(rid + 1) == 0
+
+
+def test_list_requests_without_prompt(store, rid):
+    store.add_version(rid, {}, "old")
+    store.add_version(rid, {}, "x" * 100_000)
+    full = store.list_requests()[0]
+    assert full["latest_prompt"] == "x" * 100_000
+    light = store.list_requests(with_prompt=False)[0]
+    assert light["latest_prompt"] is None
+    assert light["version_count"] == 2
+    assert {k: v for k, v in light.items() if k != "latest_prompt"} == {
+        k: v for k, v in full.items() if k != "latest_prompt"
+    }

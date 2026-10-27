@@ -99,6 +99,12 @@ def issue_number(text: str) -> str:
     return ""
 
 
+def long_lines(text: str, limit: int) -> list[int]:
+    """1-based numbers of the lines longer than limit. The GUI stops those wrapping,
+    because Tk is very slow with one huge wrapped line (a pasted base64 image)."""
+    return [n for n, line in enumerate(text.split("\n"), 1) if len(line) > limit]
+
+
 def render(text: str, values: dict, missing: set | None = None) -> str:
     """Fill {placeholders}. Unfilled ones become <name> and are added to missing."""
 
@@ -514,10 +520,15 @@ def problems(
     target_id: str,
     caps: dict,
     request_id: int | str | None = None,
+    missing: set | None = None,
 ) -> list[str]:
-    """Things that would make the prompt send the agent off guessing."""
-    missing = set()
-    build_prompt(data, template, project, raw_values, owners, team, target_id, caps, request_id, missing)
+    """Things that would make the prompt send the agent off guessing.
+
+    missing: the set a build_prompt call with the same arguments already filled, so the
+    caller doesn't build the prompt twice. Left out, the prompt is built here to find it."""
+    if missing is None:
+        missing = set()
+        build_prompt(data, template, project, raw_values, owners, team, target_id, caps, request_id, missing)
     v = computed_values(data, template, project, raw_values, request_id, team)
     out = []
     if not project:

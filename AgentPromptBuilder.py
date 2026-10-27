@@ -49,6 +49,7 @@ STATUSES = ("Draft", "Ready", "In progress", "Waiting on me", "In review", "QA",
 CLOSED_STATUSES = ("Done", "Abandoned")
 NEW_REQUEST_LABEL = "(new request - not saved yet)"
 MUTED = "#666"
+LONG_LINE = 2000  # text lines longer than this (pasted base64, minified code) don't wrap
 
 
 # ---------------------------------------------------------------------------
@@ -89,6 +90,27 @@ def save_json(path, obj):
         with contextlib.suppress(OSError):
             os.remove(tmp)
         raise
+
+
+def nowrap_long_lines(widget):
+    """Stop a Text widget's very long lines wrapping. Tk re-lays-out a wrapped line from
+    its start on every keystroke and scroll, so one pasted base64 image (a single
+    80,000-character line) made typing and scrolling crawl. Unwrapped, it runs off the
+    right edge instead; the text itself is unchanged."""
+    lines = engine.long_lines(widget.get("1.0", "end-1c"), LONG_LINE)
+    # Read what's tagged now (deleting text drops its tags) and skip the retag when it
+    # already matches, so typing in a long line doesn't re-lay it out every keystroke.
+    ranges = widget.tag_ranges("longline")
+    tagged = set()
+    for start, end in zip(ranges[::2], ranges[1::2], strict=True):
+        first, (last, col) = int(str(start).split(".")[0]), map(int, str(end).split("."))
+        tagged.update(range(first, last + (1 if col else 0)))
+    if tagged == set(lines):
+        return
+    widget.tag_configure("longline", wrap="none")
+    widget.tag_remove("longline", "1.0", "end")
+    for n in lines:
+        widget.tag_add("longline", f"{n}.0", f"{n + 1}.0")
 
 
 def browse(var, kind, start_dir=None):
@@ -149,8 +171,10 @@ class FieldForm:
                     parent, height=spec.get("height", 3), wrap="word", font=("Segoe UI", 9), undo=True
                 )
                 w.insert("1.0", value)
+                nowrap_long_lines(w)
+                w.bind("<KeyRelease>", lambda e, w=w: nowrap_long_lines(w))
                 if on_change:
-                    w.bind("<KeyRelease>", lambda e: on_change())
+                    w.bind("<KeyRelease>", lambda e: on_change(), add="+")
                 w.grid(row=row, column=1, columnspan=2, sticky="ew", pady=3)
             else:
                 if kind == "choice":
@@ -189,6 +213,7 @@ class FieldForm:
         if isinstance(w, tk.Text):
             w.delete("1.0", "end")
             w.insert("1.0", value)
+            nowrap_long_lines(w)
         else:
             w.set(value)
 
@@ -599,6 +624,7 @@ class HistoryDialog(Dialog):
         self.text.delete("1.0", "end")
         if ver:
             self.text.insert("1.0", ver["prompt"])
+        nowrap_long_lines(self.text)
 
     def _copy(self):
         ver = self._selected()
@@ -668,6 +694,19 @@ class LibraryDialog(Dialog):
         ).pack(side="left", padx=12)
 
         self.records = app.store.list_requests()
+        # Lowercase each record's searchable text once, not on every keystroke: the latest
+        # prompt can be tens of thousands of characters (a pasted base64 image, say).
+        for rec in self.records:
+            rec["_search"] = " ".join(
+                [
+                    str(rec["id"]),
+                    rec["title"],
+                    rec["project_name"] or "",
+                    self._task_name(rec),
+                    rec["status"],
+                    rec["latest_prompt"] or "",
+                ]
+            ).lower()
         self.by_iid = {}
         for var in (self.search, self.project, self.show_closed):
             var.trace_add("write", self._fill)
@@ -690,17 +729,7 @@ class LibraryDialog(Dialog):
             if not self.show_closed.get() and rec["status"] in CLOSED_STATUSES:
                 continue
             task = self._task_name(rec)
-            hay = " ".join(
-                [
-                    str(rec["id"]),
-                    rec["title"],
-                    rec["project_name"] or "",
-                    task,
-                    rec["status"],
-                    rec["latest_prompt"] or "",
-                ]
-            ).lower()
-            if all(t in hay for t in terms):
+            if all(t in rec["_search"] for t in terms):
                 iid = self.tree.insert(
                     "",
                     "end",
@@ -802,6 +831,7 @@ class App(tk.Tk):
         self.request_map = {}
         self._refresh_job = None
         self._team_job = None
+        self._status_job = None
         self._generated = ""
         self._saved_key = None
         self._loading = False
@@ -1304,7 +1334,7 @@ class App(tk.Tk):
         self.request_map = {}
         labels = []
         if self.project:
-            for r in self.store.list_requests(self.project["id"]):
+            for r in self.store.list_requests(self.project["id"], with_prompt=False):
                 t = self.templates.get(r["template_id"], {"name": r["template_id"]})
                 label = f"#{r['id']}  {r['title']}   |  {t['name']}  |  {r['status']}"
                 self.request_map[label] = r["id"]
@@ -1391,12 +1421,25 @@ class App(tk.Tk):
         )
 
     def on_preview_edited(self, _event=None):
+        # Tk's modified flag skips the text compare for arrow keys, Shift and so on.
+        # Locking stays immediate so a refresh can't overwrite an edit; the status line
+        # (which serializes the whole form) waits for a pause in typing.
+        if not self.preview.edit_modified():
+            return
+        self.preview.edit_modified(False)
         if not self.lock_var.get() and self.prompt_text() != self._generated:
             self.lock_var.set(True)
             self.status.configure(
                 text="Preview edited, so it's locked: form changes won't overwrite it. "
                 "Untick 'Keep my edits' to rebuild it from the form."
             )
+        if self._status_job:
+            self.after_cancel(self._status_job)
+        self._status_job = self.after(250, self._preview_settled)
+
+    def _preview_settled(self):
+        self._status_job = None
+        nowrap_long_lines(self.preview)
         self.refresh_status()
 
     def on_lock_toggled(self):
@@ -1424,16 +1467,22 @@ class App(tk.Tk):
         self.preview.delete("1.0", "end")
         self.preview.insert("1.0", text)
         self.preview.edit_reset()
+        self.preview.edit_modified(False)
+        nowrap_long_lines(self.preview)
 
     def refresh(self):
         self._refresh_job = None
         if self.current is None or self.form is None:
             return
-        prompt = engine.build_prompt(*self.build_args())
+        # Build once: problems() reuses the placeholders this build found missing.
+        args = self.build_args()
+        missing = set()
+        prompt = engine.build_prompt(*args, missing=missing)
         self._generated = prompt
-        if not self.lock_var.get():
+        # Re-inserting unchanged text would re-lay-out the whole preview for nothing.
+        if not self.lock_var.get() and prompt != self.prompt_text():
             self._set_preview(prompt)
-        issues = engine.problems(*self.build_args())
+        issues = engine.problems(*args, missing=missing)
         self.warning.configure(text=("Check before copying:  " + "   |   ".join(issues)) if issues else "")
         self.refresh_status()
 
@@ -1487,7 +1536,7 @@ class App(tk.Tk):
         self.request = self.store.get_request(self.request["id"])
         self._saved_key = self._dirty_key()
         self.reload_requests()
-        count = len(self.store.list_versions(self.request["id"]))
+        count = self.store.count_versions(self.request["id"])
         if not quiet:
             self.status.configure(text=f"Saved request #{self.request['id']} (version {count}).")
         self.remember()
@@ -1617,7 +1666,7 @@ class App(tk.Tk):
             note = " Not saved: no title."
         self.clipboard_clear()
         self.clipboard_append(self.prompt_text())
-        count = len(self.store.list_versions(self.request["id"])) if self.request else 0
+        count = self.store.count_versions(self.request["id"]) if self.request else 0
         if count and not note and not self.is_dirty():
             msg = f"Copied request #{self.request['id']} version {count} to the clipboard."
         else:

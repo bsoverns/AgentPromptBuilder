@@ -65,6 +65,8 @@ The **Delegation (cost control)** section always comes from the team's ops / arc
 
 **Hand edits.** As soon as you type in the preview it's **locked**, and form changes stop overwriting it. Save stores the edited text and flags the version; reopening it asks whether to restore the edited text or rebuild from the form. Untick **Keep my edits** to rebuild.
 
+**Very long lines.** A line over 2,000 characters (a pasted base64 image, minified code) doesn't wrap in the form, preview or History; it runs off the right edge. Tk lays out a wrapped line again from its start on every keystroke and scroll, so one such line used to make the whole window crawl. The text itself is unchanged. An agent can't view a base64 image pasted into a text prompt anyway, so it's usually better to save the image and give its path.
+
 All data is in `prompts.db` (SQLite) beside the script. Back that file up. `config.json` only remembers the last project, request, target, capabilities, window size and your settings.
 
 ## Task types (templates.json)
