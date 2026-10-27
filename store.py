@@ -108,13 +108,20 @@ class Store:
 
     # -- requests -----------------------------------------------------------
 
-    def list_requests(self, project_id: int | None = None) -> list[dict]:
-        """Requests, newest first, with project name, version count and the latest prompt."""
-        sql = """
+    def list_requests(self, project_id: int | None = None, with_prompt: bool = True) -> list[dict]:
+        """Requests, newest first, with project name, version count and the latest prompt.
+
+        with_prompt=False leaves latest_prompt out (None) for callers that only need the
+        list, since a prompt can be large (a pasted base64 image, say)."""
+        latest = (
+            "(SELECT v.prompt FROM versions v WHERE v.request_id = r.id ORDER BY v.id DESC LIMIT 1)"
+            if with_prompt
+            else "NULL"
+        )
+        sql = f"""
             SELECT r.*, p.name AS project_name,
                    (SELECT COUNT(*) FROM versions v WHERE v.request_id = r.id) AS version_count,
-                   (SELECT v.prompt FROM versions v WHERE v.request_id = r.id
-                     ORDER BY v.id DESC LIMIT 1) AS latest_prompt
+                   {latest} AS latest_prompt
             FROM requests r LEFT JOIN projects p ON p.id = r.project_id"""
         args = ()
         if project_id:
@@ -173,6 +180,10 @@ class Store:
         """Oldest first, so list position + 1 is the version number."""
         rows = self.db.execute("SELECT * FROM versions WHERE request_id = ? ORDER BY id", (rid,))
         return [self._version(r) for r in rows]
+
+    def count_versions(self, rid: int) -> int:
+        """How many versions a request has (the newest one's number), without loading them."""
+        return self.db.execute("SELECT COUNT(*) FROM versions WHERE request_id = ?", (rid,)).fetchone()[0]
 
     def latest_version(self, rid: int) -> dict | None:
         row = self.db.execute(

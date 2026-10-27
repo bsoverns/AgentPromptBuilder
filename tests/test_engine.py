@@ -256,6 +256,30 @@ def test_problems_clean_request(data, project):
     assert issues == []
 
 
+def test_problems_reuses_missing_from_build(data):
+    """The GUI builds once and hands the missing set to problems(); same result either way."""
+    args = (data, data["templates"][0], None, {}, {}, TEAM, "claude_code", {})
+    missing = set()
+    engine.build_prompt(*args, None, missing)
+    assert missing
+    assert engine.problems(*args, missing=missing) == engine.problems(*args)
+
+
+def test_problems_trusts_given_missing(data, project):
+    # A supplied set is used as-is: the prompt isn't rebuilt to find it.
+    issues = engine.problems(
+        data, data["templates"][0], project, {"title": "X"}, {}, TEAM, "claude_code", {}, missing={"zzz"}
+    )
+    assert issues == ["Unfilled: {zzz}"]
+
+
+def test_long_lines():
+    text = "short\n" + "A" * 50 + "\nok\n" + "B" * 51
+    assert engine.long_lines(text, 50) == [4]
+    assert engine.long_lines(text, 10) == [2, 4]
+    assert engine.long_lines("", 10) == []
+
+
 def test_problems_handoff_mentions_branch(data, project):
     values = {"title": "X", "handoff_notes": "I already branched"}
     issues = engine.problems(data, data["templates"][0], project, values, {}, TEAM, "claude_code", {})
