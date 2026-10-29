@@ -432,3 +432,45 @@ def test_real_templates_unattended_never_waits(templates, project):
         assert "merge a PR unless I say so" not in text
         if "merge" in template["steps"]:
             assert "**Merge**" in text and "gh pr merge" in text
+
+
+# -- change size flags, whole-word branch names, Claude Office template ------------
+
+
+def test_change_size_sets_small_and_large(data, project):
+    for size, small, large in (("Small", "yes", ""), ("Normal", "", ""), ("Large", "", "yes")):
+        v = engine.computed_values(data, data["templates"][0], project, {"title": "X", "change_size": size})
+        assert (v["small"], v["large"]) == (small, large)
+
+
+def test_dated_branch_cuts_at_a_whole_word():
+    words = engine.title_words("Keep the work boxes out of the way of the action")
+    assert words == "Keep_The_Work_Boxes_Out_Of_The_Way_Of"
+    assert len(engine.title_words("x" * 60)) == 40
+
+
+def _office(templates, project, size, run_mode):
+    template = next(t for t in templates["templates"] if t["id"] == "claude_office_change")
+    p = dict(project, run_mode=run_mode)
+    team = templates["team_presets"][template["team"]]
+    return engine.build_prompt(
+        templates, template, p, {"title": "T", "change_size": size}, {}, team, "claude_code", {}, 1
+    )
+
+
+def test_office_template_scales_with_change_size(templates, project):
+    small = _office(templates, project, "Small", "Stop for me")
+    assert "Check just what changed" in small and "One round" in small and "Check every theme" not in small
+    normal = _office(templates, project, "Normal", "Stop for me")
+    assert "in the themes the change touches" in normal and "review once more" in normal
+    assert "Check every theme" not in normal
+    assert "**Check every theme**" in _office(templates, project, "Large", "Stop for me")
+
+
+def test_office_template_unattended_skips_the_exe_and_merges(templates, project):
+    attended = _office(templates, project, "Normal", "Stop for me")
+    assert "**Rebuild and stop for my test**" in attended and "**Merge**" not in attended
+    out = _office(templates, project, "Normal", "Unattended (start to merge)")
+    assert "**Rebuild and stop for my test**" not in out and "After my OK" not in out
+    assert "**Merge**" in out and "**Report**" in out and "**Ask questions**" in out
+    assert "Wait for my OK" not in out and "I merge it" not in out

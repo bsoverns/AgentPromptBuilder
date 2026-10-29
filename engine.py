@@ -31,6 +31,10 @@ Run mode: a project whose "run_mode" starts with "Unattended" sets the value
 "when" / "unless" to switch on or off by any value, and an "unattended" key
 holding the text to use instead, so one template serves both a prompt that
 stops for me and one that runs a ticket from start to merge.
+
+Change size: a "Small" or "Large" change_size also sets the value "small" or
+"large", so a template can scale its steps with "when" / "unless" (a lighter
+check and one review round for a small change, every theme for a large one).
 """
 
 import re
@@ -83,10 +87,15 @@ def slug(text: str | None, maxlen: int = 40) -> str:
 
 
 def title_words(text: str | None, maxlen: int = 40) -> str:
-    """'add a wild-west theme' -> 'Add_A_Wild_West_Theme' (for dated branch names)."""
-    words = re.findall(r"[A-Za-z0-9]+", text or "")
-    s = "_".join(w[:1].upper() + w[1:] for w in words)
-    return s[:maxlen].rstrip("_")
+    """'add a wild-west theme' -> 'Add_A_Wild_West_Theme' (for dated branch names).
+    A long title is cut at a whole word, never mid-word ('..._Of_The_Action' -> '..._Of')."""
+    words = [w[:1].upper() + w[1:] for w in re.findall(r"[A-Za-z0-9]+", text or "")]
+    s = ""
+    for w in words:
+        if s and len(s) + 1 + len(w) > maxlen:
+            break
+        s = f"{s}_{w}" if s else w
+    return s[:maxlen]
 
 
 def issue_number(text: str) -> str:
@@ -287,6 +296,9 @@ def computed_values(
         if key not in (raw_values or {}):
             v[key] = spec.get("default") or (spec.get("options") or [""])[0]
     v["unattended"] = "yes" if v.get("run_mode", "").lower().startswith("unattended") else ""
+    # Change size as flags, so a step or rule can switch on with "when": "small" / "unless": "large".
+    v["small"] = "yes" if v.get("change_size") == "Small" else ""
+    v["large"] = "yes" if v.get("change_size") == "Large" else ""
     v["request_id"] = str(request_id or "")
     v["today"] = datetime.now().strftime("%Y-%m-%d")
     v["commit_type"] = template.get("commit_type", "feat")
