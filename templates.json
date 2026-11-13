@@ -634,8 +634,7 @@
       "rules": [
         "Be the brain: the lead plans, decides and checks every subagent's work before calling it done. Only one agent edits src/index.html at a time; queue the next one instead of letting two overwrite each other.",
         "Keep the work in proportion to the request: check and document what the change touches, not the whole office.",
-        "Talk to me in plain language: what changed, what was tested, what wasn't, and the rough spots.",
-        "Never deploy to production: don't run deploy scripts, copy code into a production install or restart a production service unless I ask in this conversation."
+        "Talk to me in plain language: what changed, what was tested, what wasn't, and the rough spots."
       ],
       "steps": [
         { "use": "orient",
