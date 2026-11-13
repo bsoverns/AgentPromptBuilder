@@ -628,13 +628,15 @@
     {
       "id": "claude_office_change",
       "name": "Claude Office Workers - theme / feature / fix",
-      "description": "Claude Office Workers only. Pull main -> dated branch -> plan (waits for my OK only when attended and not Small) -> change index.html (and server.py if needed) -> py_compile + a check on test port 8790 sized to the change (Small: what changed; Normal: the themes it touches; Large: every theme) -> review (one round when Small) -> docs -> commit, push, PR, CI. Attended: rebuild ClaudeOffice.exe and stop for my test before committing; Unattended: no exe build, squash-merge once CI passes.",
+      "description": "Claude Office Workers only. Pull main -> dated branch -> plan (waits for my OK only when attended and not Small) -> change index.html (and server.py if needed) -> py_compile + a check on test port 8790 sized to the change (Small: what changed; Normal: the themes it touches; Large: every theme) -> review (one round when Small) -> docs -> commit, push, PR, CI. Attended: rebuild ClaudeOffice.exe and stop for my test before committing; Unattended: no exe build before merge; squash-merge once CI passes, then build on main and deploy to the production office.",
       "branch_prefix": "feature", "branch_style": "dated", "commit_type": "feat", "team": "Cost saver - Opus lead",
       "fields": ["title", "start_model", "office_kind", "branch", "change_size", "guidance", "requirements", "acceptance", "test_plan", "files", "reference", "out_of_scope", "handoff_notes"],
       "rules": [
         "Be the brain: the lead plans, decides and checks every subagent's work before calling it done. Only one agent edits src/index.html at a time; queue the next one instead of letting two overwrite each other.",
         "Keep the work in proportion to the request: check and document what the change touches, not the whole office.",
-        "Talk to me in plain language: what changed, what was tested, what wasn't, and the rough spots."
+        "Talk to me in plain language: what changed, what was tested, what wasn't, and the rough spots.",
+        { "when": "unattended",
+          "text": "The Deploy step is me asking you, in this conversation, to replace the production office once, after this prompt's PR is merged and CI passed. That is the only time you stop, replace or start it. Never run install_hooks.py or install_cursor_hooks.py, change ~/.claude/settings.json, or touch a process running from anywhere else." }
       ],
       "steps": [
         { "use": "orient",
@@ -675,8 +677,10 @@
           "unattended": "Open a PR with `gh pr create --base {base_branch} --head {branch} --body-file <file>`, titled with the same plain sentence. Body: ## Summary, ## Changes, ## Testing (what was checked on port 8790 and in which themes), ## Rough spots and ## Assumptions (if you made any). Give me the link." },
         "ci_check",
         "merge",
+        { "id": "office_deploy", "title": "Deploy to production", "role": "lead", "cap": "run_code", "when": "unattended",
+          "text": "Only once the Merge step has squash-merged this PR and its commit is on main. In {repo_path} itself (the main checkout, not a worktree): check it's on main with a clean `git status`, `git pull`, then run `scripts\\build.bat` (it builds ClaudeOffice and CursorOffice into dist\\ and, on main, copies the usage widget to production itself). If the build fails, stop and tell me: production stays as it was. Then for ClaudeOffice, then CursorOffice, in C:\\Sandbox\\Games\\@ActiveInProduction: note whether <Name>.exe is running from that folder (`Get-Process <Name>` and its Path), stop only that process, copy the build over the folder with `robocopy dist\\<Name> \"C:\\Sandbox\\Games\\@ActiveInProduction\\<Name>\" /E` (exit codes below 8 are success; never /MIR or /PURGE: nothing there gets deleted), and start <Name>.exe again from that folder only if it was running before. Check http://127.0.0.1:8777/ answers again (and 8778 if the Cursor office was running). If the PR wasn't merged or CI failed, skip this step and say why." },
         { "id": "office_report", "title": "Report", "role": "lead", "when": "unattended",
-          "text": "Report: the PR link and merge commit, the assumptions you made, and anything found but not fixed with a recommendation. Don't build the exe or touch the production office: CI builds and smoke-tests every PR, and production is replaced once per sprint, outside this prompt." }
+          "text": "Report: the PR link and merge commit, whether the build and deploy ran, which offices were restarted, and whether the production offices answer again, the assumptions you made, and anything found but not fixed with a recommendation." }
       ]
     }
   ]
