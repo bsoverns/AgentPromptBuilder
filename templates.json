@@ -203,6 +203,21 @@
                             "Bug fix": "Bug fix: reproduce it on the test port first, find the root cause, make the smallest fix, then show it no longer happens."
                           } },
 
+    "schwab_part":      { "label": "Part of the platform", "type": "choice", "options": ["App", "Database", "Bots", "Neural network", "Several parts"],
+                          "rules": {
+                            "App": "App work is in app/: follow app/AGENTS.md. Check it from app/ with `python -m compileall -q .` and `python -m pytest tests -q -p no:cacheprovider` (the tests switch Live off, block the network and make schwabdev unimportable). Run the window only in Demo with STOCKMAN_NO_LIVE=1. If the change should reach StockManUI.exe, tell me it needs rebuilding with `Build StockManUI.exe.bat`; don't replace an exe I may be running.",
+                            "Database": "Database work is in database/, a SQL Server database project. Add every new file to StockMan-Database.sqlproj. Check it by building the project into a dacpac with MSBuild, into a folder outside the repo. Never publish it or run a script against a server: I publish. When a stored procedure's parameters change, change its caller in app/ in the same PR (app/tests compare the order procedures' parameter names with the .sql files). Tell me what a publish will do to data that's already there.",
+                            "Bots": "Bot work is in bots/. Bots trade test money only: a bot never calls Schwab and never sends an order. The one way a bot may propose a real order is `dbo.StageOrder` with `@Source = 'BOT'`, which waits for my approval in the app, and only when this request asks for it. Read bots/README.md, and bots/playground/bots/GENERATIONS.md and PROMOTIONS.md before changing a generation. bots/ has no test suite: say exactly what you ran and on what data.",
+                            "Neural network": "Neural network work is in analysis/neural-network, a .NET 8 console program. Check it with `dotnet build`. Don't run it: it reads and writes the real database. Tell me what would change in what it saves.",
+                            "Several parts": "This change crosses parts: make it in one PR and run each part's own check. app/: `python -m compileall -q .` and `python -m pytest tests -q -p no:cacheprovider` from app/, following app/AGENTS.md. database/: build the project into a dacpac with MSBuild, never publish. analysis/neural-network: `dotnet build`, never run it. bots/: no test suite, so say exactly what you ran."
+                          } },
+    "schwab_kind":      { "label": "Kind of change", "type": "choice", "options": ["Feature", "Bug fix", "Cleanup"],
+                          "rules": {
+                            "Feature": "Feature: build it so it can be tried end to end in Demo, with the fake Schwab and the fake database, before anything real. Add tests for it.",
+                            "Bug fix": "Bug fix: reproduce it first with a failing test or in Demo, find the root cause, make the smallest fix, then show the test passes. If it can only be reproduced Live or on the real database, stop and give me the steps to run.",
+                            "Cleanup": "Cleanup: no behavior change. The existing tests must pass unchanged; if one has to change, say why."
+                          } },
+
     "handoff_notes":    { "label": "What's already done / current state", "type": "text", "clear_on_copy": true, "hint": "Shown to the agent as hand-off context" },
     "next_request":     { "label": "What to do next", "type": "text", "section": "What to do next", "clear_on_copy": true }
   },
@@ -681,6 +696,53 @@
           "text": "Only once the Merge step has squash-merged this PR and its commit is on main. In {repo_path} itself (the main checkout, not a worktree): check it's on main with a clean `git status`, `git pull`, then run `scripts\\build.bat` (it builds ClaudeOffice and CursorOffice into dist\\ and, on main, copies the usage widget to production itself). If the build fails, stop and tell me: production stays as it was. Then for ClaudeOffice, then CursorOffice, in C:\\Sandbox\\Games\\@ActiveInProduction: note whether <Name>.exe is running from that folder (`Get-Process <Name>` and its Path), stop only that process, copy the build over the folder with `robocopy dist\\<Name> \"C:\\Sandbox\\Games\\@ActiveInProduction\\<Name>\" /E` (exit codes below 8 are success; never /MIR or /PURGE: nothing there gets deleted), and start <Name>.exe again from that folder only if it was running before. Check http://127.0.0.1:8777/ answers again (and 8778 if the Cursor office was running). If the PR wasn't merged or CI failed, skip this step and say why." },
         { "id": "office_report", "title": "Report", "role": "lead", "when": "unattended",
           "text": "Report: the PR link and merge commit, whether the build and deploy ran, which offices were restarted, and whether the production offices answer again, the assumptions you made, and anything found but not fixed with a recommendation." }
+      ]
+    },
+
+    {
+      "id": "schwab_change",
+      "name": "Schwab Trading Platform - feature / fix / cleanup",
+      "description": "Schwab Advanced Trading Platform only. Pick the part (App, Database, Bots, Neural network or Several parts) and the kind of change (Feature, Bug fix or Cleanup) for their rules. Pull main -> dated branch -> plan (says what could reach Schwab or the real database) -> change -> the part's tests and build check -> try it in Demo -> review, QA -> docs -> commit, push, PR -> stop. It never calls Schwab, touches the real database, publishes, deploys or merges, in any run mode.",
+      "branch_prefix": "feature", "branch_style": "dated", "commit_type": "feat", "team": "Full team",
+      "fields": ["title", "start_model", "schwab_part", "schwab_kind", "branch", "change_size", "guidance", "requirements", "acceptance", "test_plan", "files", "reference", "out_of_scope", "handoff_notes"],
+      "rules": [
+        "This platform trades real money. Never call Schwab: don't run a Live job, create a schwabdev client, type LIVE or SEND into the app, or place, replace or cancel an order. Everything you run uses Demo with STOCKMAN_NO_LIVE=1.",
+        "Never open or print the Schwab config and token files (app/AGENTS.md says where they are), and never read rows from SQL Server or write to it. Column names are fine.",
+        "Never publish the database project, run the neural network program, or deploy anything. Never merge the PR, in any run mode: I merge it after reading it.",
+        "Order code stays behind its guards: order calls live only in app/orders.py, app/schwab_client.py and app/demo_data.py, the sync jobs keep their read-only client, a send needs the preview and a typed SEND, and a send is never retried. Don't change app/tests/test_safety.py to make a change pass. If this request can't be done without loosening one of these, stop and ask me, even in an unattended run.",
+        "legacy/schwab-scripts is a read-only reference: don't edit, import or run it.",
+        "Tell me what was tested and what wasn't, especially anything only Live or the real database would show."
+      ],
+      "steps": [
+        { "use": "orient",
+          "text": "In {repo_path}, read README.md, then the README of the part this request touches and app/AGENTS.md if it touches app/, then the code it touches. Check `git status` and the branch. Summarize the current state in 3-5 lines." },
+        "questions",
+        "sync_base",
+        "create_branch",
+        { "use": "plan",
+          "text": "Write a short plan: files to change, approach, risks, and how each acceptance criterion will be checked. Say whether anything in it could reach Schwab, the real database or an order, and if so how it stays behind the existing guards. Assign the work to the team." },
+        { "use": "implement",
+          "text": "Make the change in the part this request names, following the surrounding code and each file's line endings. Keep the diff to this request." },
+        { "use": "tests",
+          "text": "Where the part has tests, add or update them for each acceptance criterion and the edge cases.{test_plan_note} Run the part's test command from the Rules and report pass / fail counts. Where it has none, say so and say what you ran instead." },
+        { "use": "build",
+          "text": "Run the part's build check from the Rules. Fix errors your change introduced; list pre-existing ones without fixing them." },
+        { "id": "demo_check", "title": "Try it in Demo", "role": "qa", "cap": "run_code",
+          "text": "If the change shows in the app window, start the app from app/ with STOCKMAN_NO_LIVE=1 set (it opens in Demo), try each acceptance criterion there, and close it. If it doesn't show in the window, skip this step and say so.",
+          "manual": "I'll try it in Demo. Give me numbered steps and what success looks like." },
+        { "use": "review",
+          "text": "Review the full diff against {base_branch} as if seeing it for the first time: correctness, edge cases, error handling, naming, tests, and whether the request's acceptance criteria (if it has any) are met. Also check that nothing new can reach Schwab, the real database or an order without the existing confirmations, and that no secret, account number or account hash can reach the screen, the log or git. List findings as blocker / should fix / nit with file:line. The coder fixes blockers and should-fixes, then review once more. After two rounds, stop and list what's left." },
+        "qa",
+        { "use": "docs",
+          "text": "Update the README of the part that changed, the Status list in the root README.md if it's no longer true, and app/AGENTS.md if a rule, command or decision changed." },
+        { "use": "commit",
+          "text": "Stage files by name (never `git add -A` or `git add .`) and check `git status` and the staged diff for secrets, account numbers, databases, settings.json and build output before each commit. Commit with a plain sentence saying what changed, like the repo's other commits. Don't commit on {base_branch}, and never amend or rebase commits that are already pushed." },
+        "push",
+        { "use": "create_pr",
+          "text": "Open a PR with `gh pr create --base {base_branch} --head {branch} --body-file <file>`, titled with the same plain sentence. Body: ## Summary, ## Changes, ## Testing (commands and results), ## Not tested (what only Live or the real database would show), ## What you need to do (publish the database, rebuild the exe, restart the app: only the ones that apply) and ## Assumptions (if you made any). Give me the link." },
+        "ci_check",
+        { "id": "handoff", "title": "Hand-off", "role": "lead",
+          "text": "Stop here. Give me the PR link; I merge it. List what I need to do by hand before using the change (publish the database, rebuild the exe, restart the app), what wasn't tested, and anything found but not fixed with a recommendation." }
       ]
     }
   ]

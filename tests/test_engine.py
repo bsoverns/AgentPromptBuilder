@@ -474,3 +474,31 @@ def test_office_template_unattended_skips_the_exe_and_merges(templates, project)
     assert "**Rebuild and stop for my test**" not in out and "After my OK" not in out
     assert "**Merge**" in out and "**Report**" in out and "**Ask questions**" in out
     assert "Wait for my OK" not in out and "I merge it" not in out
+
+
+# -- Schwab platform template ---------------------------------------------------
+
+
+def _schwab(templates, project, values, run_mode="Stop for me"):
+    template = next(t for t in templates["templates"] if t["id"] == "schwab_change")
+    p = dict(project, run_mode=run_mode)
+    team = templates["team_presets"][template["team"]]
+    values = dict({"title": "T"}, **values)
+    return engine.build_prompt(templates, template, p, values, {}, team, "claude_code", {}, 1)
+
+
+def test_schwab_template_adds_only_the_chosen_part_and_kind(templates, project):
+    out = _schwab(templates, project, {"schwab_part": "Database", "schwab_kind": "Bug fix"})
+    assert "Database work is in database/" in out and "Bug fix: reproduce it first" in out
+    assert "App work is in app/" not in out and "Feature: build it" not in out
+    spec = templates["fields"]
+    assert set(spec["schwab_part"]["rules"]) == set(spec["schwab_part"]["options"])
+    assert set(spec["schwab_kind"]["rules"]) == set(spec["schwab_kind"]["options"])
+
+
+def test_schwab_template_never_merges_or_deploys_in_any_run_mode(templates, project):
+    for run_mode in ("Stop for me", "Unattended (start to merge)"):
+        out = _schwab(templates, project, {}, run_mode)
+        assert "Never call Schwab" in out and "Never merge the PR, in any run mode" in out
+        assert "**Merge**" not in out and "gh pr merge" not in out and "Deploy to production" not in out
+        assert "**Hand-off**" in out
